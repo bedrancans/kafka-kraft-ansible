@@ -25,3 +25,7 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+# Personal working notes, never published
+notes/
+*.local.md
