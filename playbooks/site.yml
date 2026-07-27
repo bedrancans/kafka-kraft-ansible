@@ -1,0 +1,54 @@
+---
+# Deploys every component. Each play is scoped to one inventory group and
+# carries its own tag, so a single component can be deployed on its own:
+#
+#   ansible-playbook playbooks/site.yml --tags kafka_ui
+#
+# If a group has no hosts the play is skipped, which is how a component stays
+# out of the deployment until its host is added to the inventory.
+
+- name: Base OS preparation
+  hosts: all
+  become: true
+  tags: [common]
+  roles:
+    - role: common
+
+- name: Java runtime
+  hosts: kafka_brokers:kafka_ui:schema_registry:kafka_connect
+  become: true
+  tags: [java]
+  roles:
+    - role: java
+
+# --- Phase 2 -----------------------------------------------------------
+# - name: Kafka brokers and controllers
+#   hosts: kafka_brokers
+#   become: true
+#   tags: [kafka]
+#   roles:
+#     - role: kafka_kraft
+
+# --- Phase 3 -----------------------------------------------------------
+# - name: Kafka UI
+#   hosts: kafka_ui
+#   become: true
+#   tags: [kafka_ui]
+#   roles:
+#     - role: kafka_ui
+
+# --- Phase 6 -----------------------------------------------------------
+# - name: Schema Registry
+#   hosts: schema_registry
+#   become: true
+#   tags: [schema_registry]
+#   roles:
+#     - role: schema_registry
+
+# --- Phase 7 -----------------------------------------------------------
+# - name: Kafka Connect
+#   hosts: kafka_connect
+#   become: true
+#   tags: [kafka_connect]
+#   roles:
+#     - role: kafka_connect

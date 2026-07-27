@@ -1,0 +1,29 @@
+---
+- name: Install the JRE
+  ansible.builtin.apt:
+    name: "{{ java_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# /usr/bin/java is a symlink chain managed by update-alternatives;
+# resolving it is the reliable way to find the actual JVM directory.
+- name: Resolve the real path of the java binary
+  ansible.builtin.command: readlink -f /usr/bin/java
+  register: java_resolved_path
+  changed_when: false
+
+- name: Set java_home for the rest of the run
+  ansible.builtin.set_fact:
+    java_home: "{{ java_resolved_path.stdout | dirname | dirname }}"
+
+- name: Export JAVA_HOME for interactive shells
+  ansible.builtin.template:
+    src: java.sh.j2
+    dest: "{{ java_profile_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verify the installation
+  ansible.builtin.import_tasks: verify.yml

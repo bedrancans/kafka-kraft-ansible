@@ -1,0 +1,11 @@
+---
+# Kafka 4.x brokers require Java 17 or newer; 21 is the current LTS and ships
+# with Ubuntu 24.04, so no third-party apt repository is needed.
+java_package: openjdk-21-jre-headless
+
+# Asserted after installation, so a mismatched package fails loudly.
+java_required_major: 21
+
+# Where JAVA_HOME is exported for interactive shells.
+# systemd units get JAVA_HOME from their own environment file.
+java_profile_path: /etc/profile.d/java.sh

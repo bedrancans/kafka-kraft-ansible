@@ -1,0 +1,10 @@
+---
+# Kafka keeps a file descriptor open per log segment and per connection, so
+# the default limit of 1024 is reached quickly on a busy broker.
+- name: Deploy the open-file limits drop-in
+  ansible.builtin.template:
+    src: limits.conf.j2
+    dest: /etc/security/limits.d/99-kafka.conf
+    owner: root
+    group: root
+    mode: "0644"

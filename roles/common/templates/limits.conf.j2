@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+# Applies to login and SSH sessions. Services started by systemd get their
+# limits from LimitNOFILE in their unit file instead.
+
+*    soft    nofile    {{ common_nofile_limit }}
+*    hard    nofile    {{ common_nofile_limit }}
+root soft    nofile    {{ common_nofile_limit }}
+root hard    nofile    {{ common_nofile_limit }}

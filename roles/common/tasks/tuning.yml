@@ -1,0 +1,34 @@
+---
+# Only reached when kafka_tune_os is true (production).
+
+- name: Apply kernel tuning
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-kafka.conf
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ common_sysctl_settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+
+# THP causes multi-hundred-millisecond stalls for JVM workloads. There is no
+# sysctl for it, so a boot-time oneshot unit writes to /sys instead.
+- name: Deploy the transparent huge pages unit
+  ansible.builtin.copy:
+    src: disable-thp.service
+    dest: /etc/systemd/system/disable-thp.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: common_disable_thp | bool
+  notify: Reload systemd
+
+- name: Enable the transparent huge pages unit
+  ansible.builtin.systemd_service:
+    name: disable-thp.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: common_disable_thp | bool

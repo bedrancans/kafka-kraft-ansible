@@ -3,6 +3,10 @@
 .vault_pass
 *.log
 
+# Collections installed from requirements.yml (collections_path in ansible.cfg).
+# They are dependencies, not source: CI reinstalls them from requirements.yml.
+.ansible/
+
 # Lab — the public key is copied into the build context, never committed
 lab/authorized_keys
 

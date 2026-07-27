@@ -1,0 +1,21 @@
+---
+# `java --version` (two dashes, Java 9+) prints a single clean line to stdout:
+#   openjdk 21.0.11 2026-04-21
+# `java -version` writes a quoted string to stderr instead, which needs regex
+# escaping that is easy to get wrong. The two-dash form keeps this readable.
+- name: Read the installed Java version
+  ansible.builtin.command: "{{ java_home }}/bin/java --version"
+  register: java_version_output
+  changed_when: false
+
+- name: Assert the major version matches what the role expects
+  ansible.builtin.assert:
+    that:
+      - java_detected_major | int == java_required_major | int
+    fail_msg: >-
+      Expected Java {{ java_required_major }} but found {{ java_detected_major }}
+      at {{ java_home }}.
+    success_msg: "Java {{ java_detected_major }} at {{ java_home }}"
+    quiet: true
+  vars:
+    java_detected_major: "{{ java_version_output.stdout_lines[0].split()[1].split('.')[0] }}"

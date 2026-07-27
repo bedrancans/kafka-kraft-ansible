@@ -1,0 +1,14 @@
+---
+- name: Run preflight assertions
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Install base packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Configure resource limits
+  ansible.builtin.import_tasks: limits.yml
+
+# Skipped entirely in the lab; see common_tune_os in defaults/main.yml.
+- name: Apply OS tuning
+  ansible.builtin.import_tasks: tuning.yml
+  when: common_tune_os | bool

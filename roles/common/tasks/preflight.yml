@@ -1,0 +1,30 @@
+---
+# Fail early and with a readable message, before anything is changed.
+
+- name: Assert the operating system is supported
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in common_supported_os_families
+    fail_msg: >-
+      Unsupported OS family '{{ ansible_facts['os_family'] }}'.
+      This role currently supports: {{ common_supported_os_families | join(', ') }}.
+    success_msg: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+    quiet: true
+
+- name: Assert the node has enough memory
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['memtotal_mb'] | int >= common_min_memory_mb | int
+    fail_msg: >-
+      At least {{ common_min_memory_mb }} MB of RAM is required,
+      this host reports {{ ansible_facts['memtotal_mb'] }} MB.
+    quiet: true
+
+- name: Assert systemd is the init system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['service_mgr'] == 'systemd'
+    fail_msg: >-
+      systemd is required to manage the services this repository installs,
+      but the init system reports as '{{ ansible_facts['service_mgr'] }}'.
+    quiet: true

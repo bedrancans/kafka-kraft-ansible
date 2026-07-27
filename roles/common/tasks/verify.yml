@@ -1,0 +1,23 @@
+---
+# Standalone checks, runnable via playbooks/verify.yml.
+
+- name: Stat the open-file limits drop-in
+  ansible.builtin.stat:
+    path: /etc/security/limits.d/99-kafka.conf
+  register: common_limits_stat
+
+- name: Assert the limits drop-in is in place
+  ansible.builtin.assert:
+    that:
+      - common_limits_stat.stat.exists
+    fail_msg: /etc/security/limits.d/99-kafka.conf is missing.
+    quiet: true
+
+- name: Read the effective open-file limit
+  ansible.builtin.command: sh -c 'ulimit -n'
+  register: common_ulimit
+  changed_when: false
+
+- name: Report the effective open-file limit
+  ansible.builtin.debug:
+    msg: "nofile = {{ common_ulimit.stdout }} (OS tuning enabled: {{ common_tune_os }})"

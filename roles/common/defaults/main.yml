@@ -1,0 +1,45 @@
+---
+# Packages every node needs, whatever component it ends up running.
+common_base_packages:
+  - ca-certificates
+  - curl
+  - tar
+  - gzip
+  - procps
+
+# Open-file limit for login and SSH sessions.
+# systemd units set their own LimitNOFILE independently of this.
+common_nofile_limit: 100000
+
+# --- OS tuning -------------------------------------------------------------
+# Everything below only applies when this is true.
+#
+# The project-wide switch is kafka_tune_os in
+# inventories/*/group_vars/all/profile.yml: true in production, false in the
+# lab. The role reads it through its own prefixed variable so it still works
+# standalone, and defaults to the production-safe value.
+#
+# Why the lab turns it off: inside a container these settings are either
+# no-ops or they leak into the host kernel.
+common_tune_os: "{{ kafka_tune_os | default(true) }}"
+
+# Kafka relies on the page cache, so swapping is what hurts it most.
+# max_map_count matters because every log segment is memory mapped.
+common_sysctl_settings:
+  vm.swappiness: 1
+  vm.max_map_count: 262144
+  vm.dirty_ratio: 60
+  vm.dirty_background_ratio: 5
+  net.core.somaxconn: 4096
+  net.ipv4.tcp_max_syn_backlog: 4096
+
+# Transparent huge pages cause latency spikes for JVM workloads.
+common_disable_thp: true
+
+# --- Preflight -------------------------------------------------------------
+# Minimum RAM a node must report, in MB.
+common_min_memory_mb: 900
+
+# Distributions this role knows how to configure.
+common_supported_os_families:
+  - Debian

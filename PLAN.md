@@ -139,7 +139,7 @@ system bus, so the lab image must install `dbus` too.
 
 ---
 
-### PHASE 1 — `common` and `java` roles
+### PHASE 1 — `common` and `java` roles ✅
 
 **Steps**
 
@@ -155,9 +155,26 @@ system bus, so the lab image must install `dbus` too.
 
 **DoD**
 - `ansible-playbook -i inventories/lab playbooks/site.yml --tags common,java`
-  succeeds
-- the **second run reports `changed=0`** (idempotency)
-- `ansible all -a 'java -version'` reports 21
+  succeeds ✅
+- the **second run reports `changed=0`** (idempotency) ✅ (3 → 0)
+- `ansible all -a 'java --version'` reports 21 ✅
+- `make lint` passes at ansible-lint's `production` profile ✅
+
+**Lessons learned**
+
+- The lab image used to delete `/var/lib/apt/lists/*` to save space. That has
+  no equivalent on a VM and it leaves apt's "cache is fresh" stamp behind, so
+  `apt` tasks using `cache_valid_time` skipped the update and could not find
+  any package. The lists are kept now.
+- `stdout_callback = yaml` was removed from `community.general`; the
+  replacement is `result_format = yaml` on the built-in callback.
+- Parsing `java -version` (one dash, quoted string on stderr) needs a
+  backreference argument whose escaping breaks inside YAML block scalars.
+  `java --version` (two dashes) prints a plain line to stdout and needs no
+  regex at all.
+- ansible-lint's `production` profile requires role variables to carry the
+  role name as a prefix. Project-wide flags are consumed through a prefixed
+  alias instead: `common_tune_os: "{{ kafka_tune_os | default(true) }}"`.
 
 ---
 

@@ -1,0 +1,32 @@
+---
+# Read-only checks against an existing deployment.
+# Every role ships tasks/verify.yml; this playbook only wires them together.
+
+- name: Verify base OS preparation
+  hosts: all
+  become: true
+  tags: [common]
+  tasks:
+    - name: Run the common role checks
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: verify.yml
+
+- name: Verify the Java runtime
+  hosts: kafka_brokers:kafka_ui:schema_registry:kafka_connect
+  become: true
+  tags: [java]
+  tasks:
+    - name: Resolve java_home
+      ansible.builtin.command: readlink -f /usr/bin/java
+      register: java_resolved_path
+      changed_when: false
+
+    - name: Set java_home
+      ansible.builtin.set_fact:
+        java_home: "{{ java_resolved_path.stdout | dirname | dirname }}"
+
+    - name: Run the java role checks
+      ansible.builtin.include_role:
+        name: java
+        tasks_from: verify.yml
