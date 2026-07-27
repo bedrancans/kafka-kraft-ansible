@@ -11,6 +11,7 @@
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ kafka_ui_port }}/actuator/health"
     return_content: true
+  check_mode: false
   register: kafka_ui_health
   until: kafka_ui_health.json.status | default('') == 'UP'
   retries: "{{ (kafka_ui_verify_timeout_sec | int / 5) | int }}"
@@ -23,6 +24,7 @@
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ kafka_ui_port }}/api/clusters"
     return_content: true
+  check_mode: false
   register: kafka_ui_clusters
   changed_when: false
 

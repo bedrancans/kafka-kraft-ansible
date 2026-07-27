@@ -1,0 +1,88 @@
+---
+# ===========================================================================
+# Distribution
+# ===========================================================================
+# Confluent does not publish Schema Registry on its own; it ships inside the
+# Community distribution. That archive is large for one component, but it
+# keeps this repository on a single installation model — tarball plus
+# systemd — instead of introducing an apt repository that would bring its own
+# unit files and its own idea of how the service should be managed.
+schema_registry_confluent_version: "8.0.6"
+schema_registry_mirror: "https://packages.confluent.io/archive"
+schema_registry_archive_name: "confluent-community-{{ schema_registry_confluent_version }}.tar.gz"
+# Confluent publishes under the major.minor directory, so 8.0.6 lives in 8.0.
+schema_registry_release_line: "{{ schema_registry_confluent_version | regex_replace('\\.[0-9]+$', '') }}"
+schema_registry_download_url: >-
+  {{ schema_registry_mirror }}/{{ schema_registry_release_line }}/{{ schema_registry_archive_name }}
+
+# Published next to the archive as <archive>.sha256.txt.
+schema_registry_archive_sha256: "b27d935d7ded0c899c8638b710e16450af58ae7e2caf08a3334387d3c74be54a"
+
+# ===========================================================================
+# Runtime
+# ===========================================================================
+# Confluent 8.0 is supported on Java 21. Kafka UI on the same host needs 25,
+# which is why roles/java installs a list rather than a single version.
+schema_registry_java_major: 21
+
+schema_registry_user: schema-registry
+schema_registry_group: schema-registry
+
+schema_registry_base_dir: /opt
+schema_registry_versioned_dir: "{{ schema_registry_base_dir }}/confluent-{{ schema_registry_confluent_version }}"
+schema_registry_install_dir: "{{ schema_registry_base_dir }}/confluent"
+schema_registry_config_dir: /etc/schema-registry
+schema_registry_home_dir: /var/lib/schema-registry
+schema_registry_log_dir: /var/log/schema-registry
+schema_registry_download_dir: /var/cache/schema-registry
+
+# The port other components reach it on. Defined project-wide in
+# group_vars/all/cluster.yml so the UI can render a URL for a Schema Registry
+# that has not been deployed yet; repeated here so the role also works alone.
+schema_registry_port: "{{ schema_registry_port_shared | default(8081) }}"
+schema_registry_bind_address: "0.0.0.0"
+
+schema_registry_heap_size: "384m"
+
+# ===========================================================================
+# Storage topic — declared here, created by the kafka_topics role
+# ===========================================================================
+# Rule 5 of the modularity contract: a component states what it needs on the
+# broker side, it does not reach over and create it. Schema Registry keeps
+# every schema it has ever seen in this topic, so it is compacted rather than
+# retained by time, and it is single-partition because ordering of schema
+# registrations is what makes version numbers meaningful.
+#
+# Today this declaration is documentation plus the source of the replication
+# factor written into schema-registry.properties, and Schema Registry creates
+# the topic on first start. The kafka_topics role in phase 7 consumes these
+# declarations and creates the topic up front instead, which is the difference
+# between a topic whose settings were chosen here and one that happened to
+# come out right.
+schema_registry_topic: _schemas
+schema_registry_required_topics:
+  - name: "{{ schema_registry_topic }}"
+    partitions: 1
+    replication_factor: 3
+    config:
+      cleanup.policy: compact
+      min.insync.replicas: 2
+
+# ===========================================================================
+# Compatibility
+# ===========================================================================
+# BACKWARD means a new schema can read data written by the previous one, which
+# is what lets consumers be upgraded after producers. It is Confluent's
+# default and the least surprising choice; change it deliberately.
+schema_registry_compatibility_level: BACKWARD
+
+# ===========================================================================
+# systemd
+# ===========================================================================
+schema_registry_service_name: schema-registry
+schema_registry_service_restart_sec: 10
+schema_registry_service_stop_timeout_sec: 30
+schema_registry_service_nofile_limit: 16384
+
+# How long verify.yml waits for the REST API to answer.
+schema_registry_verify_timeout_sec: 120

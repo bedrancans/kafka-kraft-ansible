@@ -1,7 +1,7 @@
 ---
-- name: Install the JRE
+- name: Install the requested JREs
   ansible.builtin.apt:
-    name: "{{ java_package }}"
+    name: "{{ java_majors | map('regex_replace', '^(.*)$', 'openjdk-\\1-jre-headless') | list }}"
     state: present
     update_cache: true
     cache_valid_time: 3600

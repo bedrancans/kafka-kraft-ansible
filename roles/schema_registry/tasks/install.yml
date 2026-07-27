@@ -1,0 +1,60 @@
+---
+- name: Create the schema-registry group
+  ansible.builtin.group:
+    name: "{{ schema_registry_group }}"
+    system: true
+    state: present
+
+- name: Create the schema-registry user
+  ansible.builtin.user:
+    name: "{{ schema_registry_user }}"
+    group: "{{ schema_registry_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ schema_registry_home_dir }}"
+    create_home: false
+    state: present
+
+- name: Create the schema-registry directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ schema_registry_user }}"
+    group: "{{ schema_registry_group }}"
+    mode: "0755"
+  loop:
+    - "{{ schema_registry_config_dir }}"
+    - "{{ schema_registry_home_dir }}"
+    - "{{ schema_registry_log_dir }}"
+    - "{{ schema_registry_download_dir }}"
+    - "{{ schema_registry_versioned_dir }}"
+
+- name: Download the Confluent Community distribution
+  ansible.builtin.get_url:
+    url: "{{ schema_registry_download_url }}"
+    dest: "{{ schema_registry_download_dir }}/{{ schema_registry_archive_name }}"
+    checksum: "sha256:{{ schema_registry_archive_sha256 }}"
+    owner: root
+    group: root
+    mode: "0644"
+    timeout: 600
+
+- name: Unpack the distribution
+  ansible.builtin.unarchive:
+    src: "{{ schema_registry_download_dir }}/{{ schema_registry_archive_name }}"
+    dest: "{{ schema_registry_versioned_dir }}"
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+    owner: "{{ schema_registry_user }}"
+    group: "{{ schema_registry_group }}"
+    creates: "{{ schema_registry_versioned_dir }}/bin/schema-registry-start"
+
+- name: Point the stable path at this version
+  ansible.builtin.file:
+    src: "{{ schema_registry_versioned_dir }}"
+    dest: "{{ schema_registry_install_dir }}"
+    state: link
+    owner: "{{ schema_registry_user }}"
+    group: "{{ schema_registry_group }}"
+  notify: Restart schema-registry

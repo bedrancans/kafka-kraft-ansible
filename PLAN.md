@@ -397,7 +397,7 @@ system bus, so the lab image must install `dbus` too.
 
 ---
 
-### PHASE 6 — `schema_registry`, the proof of modularity ★
+### PHASE 6 — `schema_registry`, the proof of modularity ★ ✅
 
 This phase proves the central claim: **adding a component to a running cluster
 with zero downtime.**
@@ -413,9 +413,38 @@ with zero downtime.**
 4. `docs/09-extending.md` walks through the flow.
 
 **DoD**
-- Schema Registry comes up, register and get work
-- the Schema Registry tab **appears in Kafka UI on its own**
-- not a single task ran against the brokers — shown by the `site.yml` output
+- Schema Registry comes up, register and get work ✅
+  (a schema registered and read back; an incompatible one rejected with
+  `READER_FIELD_MISSING_DEFAULT_VALUE`, which is BACKWARD compatibility being
+  enforced rather than configured and forgotten)
+- the Schema Registry tab **appears in Kafka UI on its own** ✅
+  (`/api/clusters` gained `SCHEMA_REGISTRY` in its feature list and lists the
+  registered subject)
+- not a single task ran against the brokers ✅
+  (zero broker lines in the recap, and the three broker service start
+  timestamps are byte-identical before and after; message count unchanged
+  at 7612)
+
+The procedure and the measurements are written up in
+[docs/09-extending.md](docs/09-extending.md).
+
+**Lessons learned**
+
+- Components on one host can need different JDKs, and that is ordinary rather
+  than exceptional: Kafka UI 1.5 is compiled for Java 25, Confluent 8.0 is
+  supported on 21, and both run on the tools node. `roles/java` now installs
+  a list, and `java_majors` is set in `host_vars` rather than `group_vars`
+  because the host belongs to both groups and two group_vars files defining
+  the same variable would leave the winner to chance.
+- `--limit <group>` is what makes "the brokers were not touched" true rather
+  than merely almost true. The `java` play spans every JVM host, so without it
+  the brokers appear in the run doing nothing — which is not the same claim.
+- Confluent does not publish Schema Registry on its own; it ships inside the
+  Community archive. Taking the 416 MB download keeps every component on one
+  installation model instead of introducing an apt repository with its own
+  unit files and its own idea of how the service is managed.
+- Read-only verification tasks need `check_mode: false`, or `--check` leaves
+  the `uri` results empty and the assertions fail on nothing.
 
 → `git tag v0.5.0`
 

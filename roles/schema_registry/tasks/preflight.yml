@@ -1,0 +1,21 @@
+---
+- name: Assert the cluster has brokers to store schemas in
+  ansible.builtin.assert:
+    that:
+      - groups['kafka_brokers'] | default([]) | length > 0
+      - kafka_bootstrap_servers | length > 0
+    fail_msg: >-
+      Schema Registry keeps its schemas in a Kafka topic, so it needs a
+      cluster. The kafka_brokers group is empty.
+    quiet: true
+
+- name: Resolve the Java runtime for Schema Registry
+  ansible.builtin.include_role:
+    name: java
+    tasks_from: resolve.yml
+  vars:
+    java_required_major: "{{ schema_registry_java_major }}"
+
+- name: Set the Java home used by the service
+  ansible.builtin.set_fact:
+    schema_registry_java_home: "{{ java_home }}"

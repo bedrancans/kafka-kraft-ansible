@@ -17,15 +17,8 @@
   become: true
   tags: [java]
   tasks:
-    - name: Resolve java_home
-      ansible.builtin.command: readlink -f /usr/bin/java
-      register: java_resolved_path
-      changed_when: false
-
-    - name: Set java_home
-      ansible.builtin.set_fact:
-        java_home: "{{ java_resolved_path.stdout | dirname | dirname }}"
-
+    # The role checks every version java_majors asks for; following
+    # /usr/bin/java would only ever look at the system default.
     - name: Run the java role checks
       ansible.builtin.include_role:
         name: java
@@ -49,4 +42,14 @@
     - name: Run the kafka_ui role checks
       ansible.builtin.include_role:
         name: kafka_ui
+        tasks_from: verify.yml
+
+- name: Verify Schema Registry
+  hosts: schema_registry
+  become: true
+  tags: [schema_registry]
+  tasks:
+    - name: Run the schema_registry role checks
+      ansible.builtin.include_role:
+        name: schema_registry
         tasks_from: verify.yml

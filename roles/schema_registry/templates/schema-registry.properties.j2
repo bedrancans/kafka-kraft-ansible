@@ -1,0 +1,23 @@
+{{ ansible_managed | comment }}
+#
+# Rendered from roles/schema_registry/templates/schema-registry.properties.j2
+
+# Where the REST API listens. Kafka UI and clients reach it here.
+listeners=http://{{ schema_registry_bind_address }}:{{ schema_registry_port }}
+
+# Derived from the kafka_brokers inventory group, exactly like every other
+# component: adding a broker changes this line without anyone editing it.
+kafkastore.bootstrap.servers={{ kafka_bootstrap_servers }}
+
+# Every schema ever registered lives in this compacted topic. It is the only
+# state Schema Registry has — losing it loses the schemas, which is why it is
+# replicated like user data rather than treated as a cache.
+kafkastore.topic={{ schema_registry_topic }}
+kafkastore.topic.replication.factor={{ (schema_registry_required_topics | first).replication_factor }}
+
+# BACKWARD: a new schema can read data written by the previous one, so
+# consumers can be upgraded after producers rather than in lockstep.
+schema.compatibility.level={{ schema_registry_compatibility_level }}
+
+# Identifies this instance in the group that elects a leader for writes.
+host.name={{ inventory_hostname }}

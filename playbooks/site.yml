@@ -35,13 +35,12 @@
   roles:
     - role: kafka_ui
 
-# --- Phase 6 -----------------------------------------------------------
-# - name: Schema Registry
-#   hosts: schema_registry
-#   become: true
-#   tags: [schema_registry]
-#   roles:
-#     - role: schema_registry
+- name: Schema Registry
+  hosts: schema_registry
+  become: true
+  tags: [schema_registry]
+  roles:
+    - role: schema_registry
 
 # --- Phase 7 -----------------------------------------------------------
 # - name: Kafka Connect

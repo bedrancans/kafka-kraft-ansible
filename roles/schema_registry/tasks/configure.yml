@@ -1,0 +1,18 @@
+---
+- name: Render schema-registry.properties
+  ansible.builtin.template:
+    src: schema-registry.properties.j2
+    dest: "{{ schema_registry_config_dir }}/schema-registry.properties"
+    owner: root
+    group: "{{ schema_registry_group }}"
+    mode: "0640"
+  notify: Restart schema-registry
+
+- name: Render the service environment file
+  ansible.builtin.template:
+    src: schema-registry.env.j2
+    dest: "{{ schema_registry_config_dir }}/schema-registry.env"
+    owner: root
+    group: "{{ schema_registry_group }}"
+    mode: "0640"
+  notify: Restart schema-registry

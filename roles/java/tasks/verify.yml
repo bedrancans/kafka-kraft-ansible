@@ -1,21 +1,53 @@
 ---
+# Checks every version the host was asked to install, not just the one a
+# particular component happens to resolve. On a host serving two components
+# with different JDK requirements, "java works" is not a single question.
+
+- name: Locate every requested JVM
+  ansible.builtin.find:
+    paths: "{{ java_jvm_root }}"
+    patterns: "java-{{ item }}-openjdk-*"
+    file_type: directory
+  register: java_installed
+  loop: "{{ java_majors }}"
+  loop_control:
+    label: "Java {{ item }}"
+
+- name: Assert every requested version is present
+  ansible.builtin.assert:
+    that:
+      - item.files | length > 0
+    fail_msg: "Java {{ item.item }} is missing from {{ java_jvm_root }}."
+    quiet: true
+  loop: "{{ java_installed.results }}"
+  loop_control:
+    label: "Java {{ item.item }}"
+
 # `java --version` (two dashes, Java 9+) prints a single clean line to stdout:
 #   openjdk 21.0.11 2026-04-21
 # `java -version` writes a quoted string to stderr instead, which needs regex
-# escaping that is easy to get wrong. The two-dash form keeps this readable.
-- name: Read the installed Java version
-  ansible.builtin.command: "{{ java_home }}/bin/java --version"
-  register: java_version_output
+# escaping that is easy to get wrong.
+- name: Read the version each JVM reports
+  ansible.builtin.command: "{{ item.files[0].path }}/bin/java --version"
+  register: java_reported
   changed_when: false
+  loop: "{{ java_installed.results }}"
+  loop_control:
+    label: "Java {{ item.item }}"
 
-- name: Assert the major version matches what the role expects
+- name: Assert each JVM reports the version its directory claims
   ansible.builtin.assert:
     that:
-      - java_detected_major | int == java_required_major | int
+      - item.stdout_lines[0].split()[1].split('.')[0] | int == item.item.item | int
     fail_msg: >-
-      Expected Java {{ java_required_major }} but found {{ java_detected_major }}
-      at {{ java_home }}.
-    success_msg: "Java {{ java_detected_major }} at {{ java_home }}"
+      {{ item.item.files[0].path }} reports
+      {{ item.stdout_lines[0] }}, expected major {{ item.item.item }}.
     quiet: true
-  vars:
-    java_detected_major: "{{ java_version_output.stdout_lines[0].split()[1].split('.')[0] }}"
+  loop: "{{ java_reported.results }}"
+  loop_control:
+    label: "Java {{ item.item.item }}"
+
+- name: Report the JVMs on this host
+  ansible.builtin.debug:
+    msg: >-
+      {{ java_reported.results | map(attribute='stdout_lines') | map('first') | join(' · ') }}

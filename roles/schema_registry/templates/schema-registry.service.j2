@@ -1,0 +1,33 @@
+{{ ansible_managed | comment }}
+
+[Unit]
+Description=Confluent Schema Registry {{ schema_registry_confluent_version }}
+Documentation=https://docs.confluent.io/platform/current/schema-registry/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ schema_registry_user }}
+Group={{ schema_registry_group }}
+WorkingDirectory={{ schema_registry_home_dir }}
+EnvironmentFile={{ schema_registry_config_dir }}/schema-registry.env
+
+ExecStart={{ schema_registry_install_dir }}/bin/schema-registry-start {{ schema_registry_config_dir }}/schema-registry.properties
+
+# A client of the cluster, not part of it: if the brokers are still starting
+# it should keep retrying rather than give up.
+Restart=always
+RestartSec={{ schema_registry_service_restart_sec }}
+TimeoutStopSec={{ schema_registry_service_stop_timeout_sec }}
+LimitNOFILE={{ schema_registry_service_nofile_limit }}
+SuccessExitStatus=143
+
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths={{ schema_registry_home_dir }} {{ schema_registry_log_dir }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,19 +1,22 @@
 ---
-# Which major version this host needs.
+# Major versions to install on this host.
 #
-# Components do not have to agree: Kafka 4.x is supported on 17 and 21, while
-# Kafka UI 1.5 is compiled for 25. Each group sets what it needs in
-# group_vars, and every consumer resolves the JVM path from this number rather
-# than from /usr/bin/java — which would otherwise point at whichever version
-# apt happened to make the system default.
-java_required_major: 21
+# A list, because one host can legitimately need several: on the lab's tools
+# node Kafka UI 1.5 is compiled for 25 while Confluent 8.0 supports 21, and
+# neither is going to move for the other. Components declare what they need,
+# the host installs all of it, and each service is pointed at its own JVM.
+java_majors: [21]
 
-# Derived from the version above; override only for a non-distribution build.
-java_package: "openjdk-{{ java_required_major }}-jre-headless"
+# Which one tasks_from: resolve.yml should locate. Callers override it per
+# component; on a single-version host the default is the only one there is.
+java_required_major: "{{ java_majors | first }}"
+
+# Package name pattern; override only for a non-distribution build.
+java_package_template: "openjdk-{{ item }}-jre-headless"
 
 # Debian and Ubuntu install every JVM under here as java-<major>-openjdk-<arch>.
 java_jvm_root: /usr/lib/jvm
 
-# Where JAVA_HOME is exported for interactive shells.
-# systemd units get JAVA_HOME from their own environment file instead.
+# Where JAVA_HOME is exported for interactive shells. Points at the first
+# version in the list; systemd units get their own from an environment file.
 java_profile_path: /etc/profile.d/java.sh

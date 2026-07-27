@@ -1,0 +1,49 @@
+---
+- name: Wait for the REST port to accept connections
+  ansible.builtin.wait_for:
+    port: "{{ schema_registry_port }}"
+    host: 127.0.0.1
+    timeout: "{{ schema_registry_verify_timeout_sec }}"
+
+# The port opens before the store has caught up with the _schemas topic, so
+# the endpoint that reads from the store is what actually says "ready".
+- name: Wait until the registry answers
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ schema_registry_port }}/subjects"
+    return_content: true
+  check_mode: false
+  register: schema_registry_subjects
+  until: schema_registry_subjects.status == 200
+  retries: "{{ (schema_registry_verify_timeout_sec | int / 5) | int }}"
+  delay: 5
+  changed_when: false
+
+- name: Read the configured compatibility level back
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ schema_registry_port }}/config"
+    return_content: true
+  check_mode: false
+  register: schema_registry_config
+  changed_when: false
+
+- name: Assert the registry is serving with the expected compatibility level
+  ansible.builtin.assert:
+    that:
+      - schema_registry_config.json.compatibilityLevel == schema_registry_compatibility_level
+    fail_msg: >-
+      Schema Registry reports
+      {{ schema_registry_config.json.compatibilityLevel | default('nothing') }},
+      expected {{ schema_registry_compatibility_level }}.
+    success_msg: >-
+      Schema Registry is serving
+      ({{ schema_registry_subjects.json | length }} subjects,
+      compatibility {{ schema_registry_config.json.compatibilityLevel }})
+    quiet: true
+
+- name: Confirm the storage topic exists on the cluster
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ schema_registry_port }}/subjects"
+  check_mode: false
+  register: schema_registry_reachable
+  changed_when: false
+  failed_when: schema_registry_reachable.status != 200

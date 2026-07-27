@@ -1,0 +1,9 @@
+---
+# tools-1 hosts two components with different JDK requirements:
+#   Kafka UI 1.5      compiled for 25
+#   Schema Registry   Confluent 8.0, supported on 21
+#
+# Set here rather than in group_vars because the host belongs to both groups
+# and two group_vars files defining the same variable would leave the winner
+# to chance.
+java_majors: [21, 25]

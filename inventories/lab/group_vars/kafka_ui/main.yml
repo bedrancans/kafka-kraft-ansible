@@ -1,5 +1,4 @@
 ---
 # Kafka UI 1.5 is compiled for Java 25 (class file version 69); starting it on
-# 21 fails with UnsupportedClassVersionError. The brokers stay on 21, which is
-# what Kafka 4.x supports, so the two versions coexist on purpose.
-java_required_major: 25
+# 21 fails with UnsupportedClassVersionError.
+kafka_ui_java_major: 25
