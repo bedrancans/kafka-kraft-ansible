@@ -21,6 +21,14 @@ kafka_controller_host: "{{ inventory_hostname }}"
 # The address clients outside the cluster connect to
 kafka_external_advertised_host: "localhost"
 
+# --- Satellite component ports ---
+# These live here rather than inside each component's role because other
+# components need them before those roles exist: the UI renders a Schema
+# Registry URL as soon as the group has a host, which is what makes adding a
+# component a UI restart rather than a cluster change.
+schema_registry_port: 8081
+kafka_connect_port: 8083
+
 # --- Derived: the bootstrap list every satellite component consumes ---
 kafka_bootstrap_servers: >-
   {{ groups['kafka_brokers']

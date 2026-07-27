@@ -1,0 +1,35 @@
+{{ ansible_managed | comment }}
+
+[Unit]
+Description=Kafka UI {{ kafka_ui_version }}
+Documentation=https://github.com/{{ kafka_ui_repo }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ kafka_ui_user }}
+Group={{ kafka_ui_group }}
+WorkingDirectory={{ kafka_ui_home_dir }}
+EnvironmentFile={{ kafka_ui_config_dir }}/kafka-ui.env
+
+ExecStart={{ kafka_ui_java_home }}/bin/java $JAVA_OPTS -jar {{ kafka_ui_current_jar }}
+
+# The UI is a client of the cluster, not part of it. If the brokers are still
+# starting it should keep retrying rather than give up.
+Restart=always
+RestartSec={{ kafka_ui_service_restart_sec }}
+TimeoutStopSec={{ kafka_ui_service_stop_timeout_sec }}
+LimitNOFILE={{ kafka_ui_service_nofile_limit }}
+SuccessExitStatus=143
+
+# It only ever reads from Kafka over the network, so it has no business
+# writing anywhere except its own directories.
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths={{ kafka_ui_home_dir }} {{ kafka_ui_log_dir }}
+
+[Install]
+WantedBy=multi-user.target

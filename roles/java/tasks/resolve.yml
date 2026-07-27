@@ -1,0 +1,35 @@
+---
+# Locates an already installed JVM and publishes java_home. Installs nothing.
+#
+# Other roles include this instead of duplicating the lookup:
+#
+#   - ansible.builtin.include_role:
+#       name: java
+#       tasks_from: resolve.yml
+#     vars:
+#       java_required_major: "{{ kafka_ui_java_major }}"
+#
+# Resolving by major version rather than by following /usr/bin/java matters as
+# soon as a host has more than one JVM: the symlink points at the system
+# default, which is not necessarily the version this component was built for.
+
+- name: Locate the JVM directory for Java {{ java_required_major }}
+  ansible.builtin.find:
+    paths: "{{ java_jvm_root }}"
+    patterns: "java-{{ java_required_major }}-openjdk-*"
+    file_type: directory
+  register: java_jvm_candidates
+
+- name: Assert the requested JVM is installed
+  ansible.builtin.assert:
+    that:
+      - java_jvm_candidates.files | length > 0
+    fail_msg: >-
+      No Java {{ java_required_major }} found under {{ java_jvm_root }}.
+      Run the java role against this host with
+      java_required_major={{ java_required_major }}.
+    quiet: true
+
+- name: Set java_home
+  ansible.builtin.set_fact:
+    java_home: "{{ java_jvm_candidates.files[0].path }}"

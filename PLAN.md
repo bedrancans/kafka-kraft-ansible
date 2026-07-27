@@ -251,7 +251,7 @@ system bus, so the lab image must install `dbus` too.
 
 ---
 
-### PHASE 3 — `kafka_ui` role and the modularity payoff
+### PHASE 3 — `kafka_ui` role and the modularity payoff ✅
 
 **Steps**
 
@@ -276,8 +276,31 @@ system bus, so the lab image must install `dbus` too.
    (create topic → produce → consume → clean up).
 
 **DoD**
-- `http://localhost:8080` shows three brokers and the topics
-- running `--tags kafka_ui` sends **no tasks to the brokers** (zero downtime)
+- `http://localhost:8080` shows three brokers and the topics ✅
+  (`/api/clusters` reports `status: ONLINE`, `brokerCount: 3`,
+  `controller: KRAFT`)
+- running `--tags kafka_ui` sends **no tasks to the brokers** ✅
+  (zero broker lines in the recap; broker service start timestamps unchanged
+  across the whole phase)
+- full `site.yml` still reports `changed=0` on the second run ✅
+
+**Lessons learned**
+
+- Components do not have to agree on a Java version. Kafka UI 1.5 is compiled
+  for Java 25 (class file version 69) and fails on 21 with
+  `UnsupportedClassVersionError`, while Kafka 4.x is supported on 17 and 21.
+  Following `/usr/bin/java` would have made the two components fight over the
+  system default, so the java role gained `tasks_from: resolve.yml`, which
+  locates a JVM by major version. Each component states the version it needs
+  and the group_vars for `kafka_ui` install Java 25 on that host only.
+- The GitHub releases API exposes an asset `digest`, so the jar is pinned by
+  checksum like the broker tarball. It is worth being precise about what that
+  buys: Apache publishes a checksum signed by the release manager, while
+  GitHub computes this one from the uploaded asset, so it protects the
+  download rather than the upload.
+- `DYNAMIC_CONFIG_ENABLED` is off deliberately. With it on, a change made in
+  the browser would be silently reverted by the next Ansible run — the two
+  sources of truth would quietly disagree.
 
 → `git tag v0.2.0`
 

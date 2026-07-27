@@ -1,0 +1,9 @@
+---
+- name: Render the Kafka UI environment file
+  ansible.builtin.template:
+    src: kafka-ui.env.j2
+    dest: "{{ kafka_ui_config_dir }}/kafka-ui.env"
+    owner: root
+    group: "{{ kafka_ui_group }}"
+    mode: "0640"
+  notify: Restart kafka-ui

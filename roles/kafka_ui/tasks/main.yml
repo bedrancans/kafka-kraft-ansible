@@ -1,0 +1,15 @@
+---
+- name: Run preflight assertions
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Install the application
+  ansible.builtin.import_tasks: install.yml
+
+- name: Render the configuration
+  ansible.builtin.import_tasks: configure.yml
+
+- name: Install and start the service
+  ansible.builtin.import_tasks: service.yml
+
+- name: Verify the application
+  ansible.builtin.import_tasks: verify.yml

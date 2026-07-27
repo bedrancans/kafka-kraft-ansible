@@ -106,6 +106,11 @@ kafka_socket_request_max_bytes: 104857600
 # ===========================================================================
 # JVM
 # ===========================================================================
+# Kafka 4.x is supported on Java 17 and 21. Other components on the same host
+# may need a different major version, so the broker states the one it wants
+# and the JVM path is resolved from it.
+kafka_java_major: 21
+
 # The environment profile overrides this
 # (inventories/*/group_vars/all/profile.yml): 512m in the lab, 6g in
 # production. The value here is only the standalone fallback.

@@ -1,11 +1,19 @@
 ---
-# Kafka 4.x brokers require Java 17 or newer; 21 is the current LTS and ships
-# with Ubuntu 24.04, so no third-party apt repository is needed.
-java_package: openjdk-21-jre-headless
-
-# Asserted after installation, so a mismatched package fails loudly.
+# Which major version this host needs.
+#
+# Components do not have to agree: Kafka 4.x is supported on 17 and 21, while
+# Kafka UI 1.5 is compiled for 25. Each group sets what it needs in
+# group_vars, and every consumer resolves the JVM path from this number rather
+# than from /usr/bin/java — which would otherwise point at whichever version
+# apt happened to make the system default.
 java_required_major: 21
 
+# Derived from the version above; override only for a non-distribution build.
+java_package: "openjdk-{{ java_required_major }}-jre-headless"
+
+# Debian and Ubuntu install every JVM under here as java-<major>-openjdk-<arch>.
+java_jvm_root: /usr/lib/jvm
+
 # Where JAVA_HOME is exported for interactive shells.
-# systemd units get JAVA_HOME from their own environment file.
+# systemd units get JAVA_HOME from their own environment file instead.
 java_profile_path: /etc/profile.d/java.sh

@@ -28,13 +28,12 @@
   roles:
     - role: kafka
 
-# --- Phase 3 -----------------------------------------------------------
-# - name: Kafka UI
-#   hosts: kafka_ui
-#   become: true
-#   tags: [kafka_ui]
-#   roles:
-#     - role: kafka_ui
+- name: Kafka UI
+  hosts: kafka_ui
+  become: true
+  tags: [kafka_ui]
+  roles:
+    - role: kafka_ui
 
 # --- Phase 6 -----------------------------------------------------------
 # - name: Schema Registry

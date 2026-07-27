@@ -57,24 +57,17 @@
       KRaft cannot form a quorum until every node can resolve the others.
     quiet: true
 
-# The java role sets this fact, but the kafka role must also work when it is
-# run on its own with --tags kafka.
-- name: Resolve the Java runtime
-  ansible.builtin.command: readlink -f /usr/bin/java
-  register: kafka_java_path
-  changed_when: false
-  failed_when: false
-
-- name: Assert Java is installed
-  ansible.builtin.assert:
-    that:
-      - kafka_java_path.rc == 0
-      - kafka_java_path.stdout | length > 0
-    fail_msg: >-
-      No Java runtime found at /usr/bin/java. Run the java role first
-      (--tags java) or add this host to a group that receives it.
-    quiet: true
+# Resolved by major version rather than by following /usr/bin/java: a host may
+# carry several JVMs, and the system default is not necessarily the one this
+# component was built against. The lookup lives in the java role so it is not
+# duplicated per component.
+- name: Resolve the Java runtime for the broker
+  ansible.builtin.include_role:
+    name: java
+    tasks_from: resolve.yml
+  vars:
+    java_required_major: "{{ kafka_java_major }}"
 
 - name: Set the Java home used by the service
   ansible.builtin.set_fact:
-    kafka_java_home: "{{ kafka_java_path.stdout | dirname | dirname }}"
+    kafka_java_home: "{{ java_home }}"

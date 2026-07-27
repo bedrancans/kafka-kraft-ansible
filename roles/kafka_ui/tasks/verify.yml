@@ -1,0 +1,48 @@
+---
+- name: Wait for the HTTP port to accept connections
+  ansible.builtin.wait_for:
+    port: "{{ kafka_ui_port }}"
+    host: 127.0.0.1
+    timeout: "{{ kafka_ui_verify_timeout_sec }}"
+
+# The port opens before the application finishes wiring itself up, so the
+# health endpoint is what actually says "ready".
+- name: Wait for the health endpoint to report UP
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ kafka_ui_port }}/actuator/health"
+    return_content: true
+  register: kafka_ui_health
+  until: kafka_ui_health.json.status | default('') == 'UP'
+  retries: "{{ (kafka_ui_verify_timeout_sec | int / 5) | int }}"
+  delay: 5
+  changed_when: false
+
+# Asks the UI what it knows about the cluster. If this reports the expected
+# number of brokers, the whole path works: UI -> INTERNAL listener -> quorum.
+- name: Ask the UI what it sees
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ kafka_ui_port }}/api/clusters"
+    return_content: true
+  register: kafka_ui_clusters
+  changed_when: false
+
+- name: Assert the UI sees every broker
+  ansible.builtin.assert:
+    that:
+      - kafka_ui_clusters.json | length > 0
+      - kafka_ui_clusters.json[0].brokerCount | int == groups['kafka_brokers'] | length
+    fail_msg: >-
+      The UI reports
+      {{ kafka_ui_clusters.json[0].brokerCount | default('no') }} brokers but
+      the inventory has {{ groups['kafka_brokers'] | length }}. Check that
+      kafka_bootstrap_servers resolves from {{ inventory_hostname }}.
+    success_msg: >-
+      Kafka UI sees {{ kafka_ui_clusters.json[0].brokerCount }} brokers in
+      cluster '{{ kafka_ui_clusters.json[0].name }}'.
+    quiet: true
+
+- name: Report which components the UI was configured with
+  ansible.builtin.debug:
+    msg: >-
+      Schema Registry: {{ 'configured' if groups['schema_registry'] | default([]) | length > 0 else 'not deployed' }} ·
+      Kafka Connect: {{ 'configured' if groups['kafka_connect'] | default([]) | length > 0 else 'not deployed' }}

@@ -1,0 +1,21 @@
+---
+- name: Assert the cluster has brokers to connect to
+  ansible.builtin.assert:
+    that:
+      - groups['kafka_brokers'] | default([]) | length > 0
+      - kafka_bootstrap_servers | length > 0
+    fail_msg: >-
+      The kafka_brokers group is empty, so there is nothing for the UI to
+      display. Add brokers to the inventory first.
+    quiet: true
+
+- name: Resolve the Java runtime for the UI
+  ansible.builtin.include_role:
+    name: java
+    tasks_from: resolve.yml
+  vars:
+    java_required_major: "{{ kafka_ui_java_major }}"
+
+- name: Set the Java home used by the service
+  ansible.builtin.set_fact:
+    kafka_ui_java_home: "{{ java_home }}"

@@ -40,3 +40,13 @@
       ansible.builtin.include_role:
         name: kafka
         tasks_from: verify.yml
+
+- name: Verify Kafka UI
+  hosts: kafka_ui
+  become: true
+  tags: [kafka_ui]
+  tasks:
+    - name: Run the kafka_ui role checks
+      ansible.builtin.include_role:
+        name: kafka_ui
+        tasks_from: verify.yml
