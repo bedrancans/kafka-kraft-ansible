@@ -1,0 +1,137 @@
+---
+# ===========================================================================
+# Distribution
+# ===========================================================================
+# The version is pinned on purpose. "Install the latest" makes a playbook
+# that works today and installs something else tomorrow.
+# Upgrading is a deliberate edit here plus playbooks/upgrade.yml.
+kafka_version: "4.3.1"
+kafka_scala_version: "2.13"
+
+kafka_mirror: "https://downloads.apache.org/kafka"
+kafka_archive_name: "kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+kafka_download_url: "{{ kafka_mirror }}/{{ kafka_version }}/{{ kafka_archive_name }}"
+
+# Published next to the archive as <archive>.sha512.
+# get_url refuses to install anything that does not match, which is what
+# turns "downloaded a file" into "downloaded the right file".
+# A hash cannot be wrapped, hence the exemption.
+# yamllint disable-line rule:line-length
+kafka_archive_sha512: "c7d7b2318cb51aa0c61d3246a51c349210073c5c9b754947ef965a439f2f939e8600f204e134a75ac31faf3829c9370960ef7c6a9886c8a1dbf0339a21f4c54c"
+
+# ===========================================================================
+# Paths and identity
+# ===========================================================================
+kafka_user: kafka
+kafka_group: kafka
+
+kafka_base_dir: /opt
+# Every version lands in its own directory and /opt/kafka is a symlink to the
+# active one. Upgrade and rollback then become a single symlink flip.
+kafka_versioned_dir: "{{ kafka_base_dir }}/kafka-{{ kafka_version }}"
+kafka_install_dir: "{{ kafka_base_dir }}/kafka"
+
+kafka_config_dir: /etc/kafka
+# The service account's home. It must NOT be log.dirs: anything that writes
+# into a user's home (Ansible's own ~/.ansible/tmp, for one) would land in the
+# data directory, and Kafka refuses to start when log.dirs contains a
+# directory that is not a topic partition.
+kafka_home_dir: /var/lib/kafka
+kafka_data_dir: "{{ kafka_home_dir }}/data"  # log.dirs — the actual messages
+kafka_app_log_dir: /var/log/kafka            # log4j output of the broker itself
+kafka_download_dir: /var/cache/kafka
+
+# ===========================================================================
+# Topology
+# ===========================================================================
+# Combined mode: the same node is both broker and controller.
+# For isolated mode set this to "broker" or "controller" per group.
+kafka_process_roles: "broker,controller"
+
+# kafka_node_id is intentionally NOT defaulted: every node must define its own
+# in the inventory, and preflight asserts it is unique across the cluster.
+
+# ===========================================================================
+# Listeners
+# ===========================================================================
+# Three listeners, because one address can never satisfy both the cluster and
+# the outside world. See docs/01-architecture.md.
+kafka_internal_listener: INTERNAL      # broker <-> broker, UI, SR, Connect
+kafka_external_listener: EXTERNAL      # clients outside the cluster
+kafka_controller_listener: CONTROLLER  # KRaft quorum only, never exposed
+
+# Phase 8 turns these into SASL_SSL.
+kafka_internal_security_protocol: PLAINTEXT
+kafka_external_security_protocol: PLAINTEXT
+kafka_controller_security_protocol: PLAINTEXT
+
+# Set to false to drop the EXTERNAL listener entirely (single-network setups).
+kafka_external_listener_enabled: true
+
+# ===========================================================================
+# Cluster-wide durability
+# ===========================================================================
+# Three replicas, two of which must acknowledge a write. With acks=all this
+# means the cluster survives losing one broker without losing data — and
+# stops accepting writes when it loses two. That is the deliberate trade-off.
+kafka_default_replication_factor: 3
+kafka_min_insync_replicas: 2
+kafka_num_partitions: 3
+
+# Kafka's own internal topics need the same durability as user data.
+kafka_offsets_topic_replication_factor: 3
+kafka_transaction_state_log_replication_factor: 3
+kafka_transaction_state_log_min_isr: 2
+
+# Creating topics by accident from a typo in a client is a common way to end
+# up with single-replica topics in production.
+kafka_auto_create_topics_enable: false
+
+# ===========================================================================
+# Retention and storage
+# ===========================================================================
+kafka_log_retention_hours: 168          # 7 days
+kafka_log_segment_bytes: 1073741824     # 1 GiB
+kafka_log_retention_check_interval_ms: 300000
+
+# ===========================================================================
+# Threading and sockets
+# ===========================================================================
+kafka_num_network_threads: 3
+kafka_num_io_threads: 8
+kafka_socket_send_buffer_bytes: 102400
+kafka_socket_receive_buffer_bytes: 102400
+kafka_socket_request_max_bytes: 104857600
+
+# ===========================================================================
+# JVM
+# ===========================================================================
+# The environment profile overrides this
+# (inventories/*/group_vars/all/profile.yml): 512m in the lab, 6g in
+# production. The value here is only the standalone fallback.
+# Kafka reads most data from the page cache, so an oversized heap steals
+# memory from the OS and lengthens GC pauses.
+kafka_heap_size: "1g"
+
+kafka_jvm_opts: >-
+  -XX:+UseG1GC
+  -XX:MaxGCPauseMillis=20
+  -XX:InitiatingHeapOccupancyPercent=35
+  -XX:+ExplicitGCInvokesConcurrent
+  -Djava.awt.headless=true
+
+# ===========================================================================
+# systemd
+# ===========================================================================
+kafka_service_name: kafka
+kafka_service_restart_sec: 5
+# Kafka flushes and closes its log segments on shutdown; killing it early
+# forces a slow recovery scan on the next start.
+kafka_service_stop_timeout_sec: 180
+kafka_service_nofile_limit: 100000
+
+# ===========================================================================
+# Verification
+# ===========================================================================
+# How long tasks/verify.yml waits for the broker to answer.
+kafka_verify_timeout_sec: 60

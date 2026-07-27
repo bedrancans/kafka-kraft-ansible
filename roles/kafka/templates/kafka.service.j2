@@ -1,0 +1,33 @@
+{{ ansible_managed | comment }}
+
+[Unit]
+Description=Apache Kafka {{ kafka_version }} (KRaft mode)
+Documentation=https://kafka.apache.org/documentation/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ kafka_user }}
+Group={{ kafka_group }}
+EnvironmentFile={{ kafka_config_dir }}/kafka.env
+
+ExecStart={{ kafka_install_dir }}/bin/kafka-server-start.sh {{ kafka_config_dir }}/server.properties
+ExecStop={{ kafka_install_dir }}/bin/kafka-server-stop.sh
+
+Restart=on-failure
+RestartSec={{ kafka_service_restart_sec }}
+
+# Kafka flushes and closes its log segments while shutting down. Killing it
+# early forces a slow recovery scan on the next start, so give it room.
+TimeoutStopSec={{ kafka_service_stop_timeout_sec }}
+
+# One descriptor per log segment and per connection; the default 1024 is
+# exhausted quickly on a busy broker.
+LimitNOFILE={{ kafka_service_nofile_limit }}
+
+# The JVM exits with 143 when it receives SIGTERM, which is a normal stop.
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

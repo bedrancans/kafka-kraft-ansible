@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  author: Bedran Can Sarı
+  description: Apache Kafka broker and controller in KRaft mode
+  company: ""
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+        - jammy
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - kafka
+    - kraft
+    - streaming
+dependencies: []

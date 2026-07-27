@@ -1,0 +1,80 @@
+---
+# Nothing here changes the system. These checks run first so a misconfigured
+# inventory fails with a readable message instead of a half-installed broker.
+
+- name: Assert this node has a node id
+  ansible.builtin.assert:
+    that:
+      - kafka_node_id is defined
+      - kafka_node_id | int > 0
+    fail_msg: >-
+      {{ inventory_hostname }} has no kafka_node_id. Every KRaft node needs a
+      unique positive integer id, set it in the inventory.
+    quiet: true
+
+- name: Assert node ids are unique across the cluster
+  ansible.builtin.assert:
+    that:
+      - kafka_cluster_node_ids | length == kafka_cluster_node_ids | unique | length
+    fail_msg: >-
+      Duplicate kafka_node_id values found: {{ kafka_cluster_node_ids }}.
+      Two nodes sharing an id will fight over the same identity in the quorum.
+    quiet: true
+  vars:
+    kafka_cluster_node_ids: >-
+      {{ groups['kafka_brokers'] | map('extract', hostvars, 'kafka_node_id') | list }}
+  run_once: true
+
+- name: Assert a cluster id is configured
+  ansible.builtin.assert:
+    that:
+      - kafka_cluster_id is defined
+      - kafka_cluster_id | length == 22
+    fail_msg: >-
+      kafka_cluster_id must be set to a 22 character base64 UUID shared by
+      every node. Generate one with `make cluster-id` and store it in
+      inventories/<env>/group_vars/kafka_brokers/cluster_id.yml.
+    quiet: true
+
+# KRaft nodes address each other by hostname. If DNS is broken the quorum
+# never forms, and the error Kafka logs for it is not obvious.
+- name: Resolve every controller hostname from this node
+  ansible.builtin.command: "getent hosts {{ item }}"
+  loop: >-
+    {{ groups['kafka_controllers'] | map('extract', hostvars, 'kafka_controller_host') | list }}
+  register: kafka_controller_dns
+  changed_when: false
+  failed_when: false
+
+- name: Assert every controller hostname resolved
+  ansible.builtin.assert:
+    that:
+      - kafka_controller_dns.results | selectattr('rc', 'ne', 0) | list | length == 0
+    fail_msg: >-
+      These controller hostnames do not resolve from {{ inventory_hostname }}:
+      {{ kafka_controller_dns.results | selectattr('rc', 'ne', 0)
+         | map(attribute='item') | join(', ') }}.
+      KRaft cannot form a quorum until every node can resolve the others.
+    quiet: true
+
+# The java role sets this fact, but the kafka role must also work when it is
+# run on its own with --tags kafka.
+- name: Resolve the Java runtime
+  ansible.builtin.command: readlink -f /usr/bin/java
+  register: kafka_java_path
+  changed_when: false
+  failed_when: false
+
+- name: Assert Java is installed
+  ansible.builtin.assert:
+    that:
+      - kafka_java_path.rc == 0
+      - kafka_java_path.stdout | length > 0
+    fail_msg: >-
+      No Java runtime found at /usr/bin/java. Run the java role first
+      (--tags java) or add this host to a group that receives it.
+    quiet: true
+
+- name: Set the Java home used by the service
+  ansible.builtin.set_fact:
+    kafka_java_home: "{{ kafka_java_path.stdout | dirname | dirname }}"

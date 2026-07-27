@@ -1,0 +1,56 @@
+---
+- name: Wait for the internal listener to accept connections
+  ansible.builtin.wait_for:
+    port: "{{ kafka_internal_port }}"
+    host: 127.0.0.1
+    timeout: "{{ kafka_verify_timeout_sec }}"
+
+- name: Wait for the controller listener to accept connections
+  ansible.builtin.wait_for:
+    port: "{{ kafka_controller_port }}"
+    host: 127.0.0.1
+    timeout: "{{ kafka_verify_timeout_sec }}"
+  when: "'controller' in kafka_process_roles"
+
+- name: Confirm the service is running
+  ansible.builtin.systemd_service:
+    name: "{{ kafka_service_name }}"
+  register: kafka_service_state
+  changed_when: false
+
+- name: Assert the service is active
+  ansible.builtin.assert:
+    that:
+      - kafka_service_state.status.ActiveState == 'active'
+    fail_msg: >-
+      {{ kafka_service_name }} is {{ kafka_service_state.status.ActiveState }}
+      on {{ inventory_hostname }}. Check `journalctl -u {{ kafka_service_name }}`.
+    quiet: true
+
+# One node is enough to describe the quorum, and describing it from every node
+# would just repeat the same answer three times.
+- name: Describe the metadata quorum
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-metadata-quorum.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      describe --status
+  register: kafka_quorum_status
+  changed_when: false
+  run_once: true
+
+- name: Show the quorum status
+  ansible.builtin.debug:
+    var: kafka_quorum_status.stdout_lines
+  run_once: true
+
+- name: Assert the quorum has an elected leader
+  ansible.builtin.assert:
+    that:
+      - "'LeaderId:' in kafka_quorum_status.stdout"
+    fail_msg: >-
+      The metadata quorum has no elected leader. Check that every node renders
+      the same controller.quorum.voters string and that the controller port is
+      reachable between nodes.
+    quiet: true
+  run_once: true

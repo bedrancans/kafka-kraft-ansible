@@ -1,0 +1,11 @@
+---
+# The KRaft cluster id. Generated ONCE and then never changed: it is the
+# identity every node checks when it joins the quorum. Regenerating it makes
+# the existing on-disk metadata unreadable.
+#
+# Generate a new one for a new cluster with:
+#   make cluster-id
+#
+# Committed in plain text for the lab. In production keep this file under
+# ansible-vault together with the rest of the cluster secrets.
+kafka_cluster_id: "SJQMG1rwTs2IcoafJq28dA"

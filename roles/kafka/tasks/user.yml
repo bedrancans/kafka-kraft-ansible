@@ -1,0 +1,40 @@
+---
+# Kafka runs as an unprivileged system account with no login shell: if the
+# broker is ever compromised, the attacker does not get an interactive user.
+
+- name: Create the kafka group
+  ansible.builtin.group:
+    name: "{{ kafka_group }}"
+    system: true
+    state: present
+
+- name: Create the kafka user
+  ansible.builtin.user:
+    name: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    # Deliberately the parent of log.dirs, not log.dirs itself.
+    home: "{{ kafka_home_dir }}"
+    create_home: false
+    state: present
+
+- name: Create the Kafka directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    # Configuration is world-readable; phase 8 moves secrets out of it.
+    - {path: "{{ kafka_config_dir }}", mode: "0755"}
+    # Home first, then the data directory inside it.
+    - {path: "{{ kafka_home_dir }}", mode: "0750"}
+    # The data directory holds the messages themselves, so nothing outside
+    # the kafka user has any business reading it.
+    - {path: "{{ kafka_data_dir }}", mode: "0750"}
+    - {path: "{{ kafka_app_log_dir }}", mode: "0755"}
+    - {path: "{{ kafka_download_dir }}", mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"

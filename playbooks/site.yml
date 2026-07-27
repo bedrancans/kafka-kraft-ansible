@@ -21,13 +21,12 @@
   roles:
     - role: java
 
-# --- Phase 2 -----------------------------------------------------------
-# - name: Kafka brokers and controllers
-#   hosts: kafka_brokers
-#   become: true
-#   tags: [kafka]
-#   roles:
-#     - role: kafka_kraft
+- name: Kafka brokers and controllers
+  hosts: kafka_brokers
+  become: true
+  tags: [kafka]
+  roles:
+    - role: kafka
 
 # --- Phase 3 -----------------------------------------------------------
 # - name: Kafka UI

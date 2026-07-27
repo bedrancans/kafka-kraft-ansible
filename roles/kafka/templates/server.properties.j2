@@ -1,0 +1,96 @@
+{{ ansible_managed | comment }}
+#
+# Rendered from roles/kafka/templates/server.properties.j2
+# Do not edit on the host: the next Ansible run overwrites it.
+
+############################# Node identity #############################
+
+process.roles={{ kafka_process_roles }}
+node.id={{ kafka_node_id }}
+
+{% if 'controller' in kafka_process_roles %}
+############################# KRaft quorum #############################
+
+# Static voter list: every node must see the exact same string here, or the
+# quorum never forms. Built from the kafka_controllers inventory group, so
+# adding a controller is an inventory edit and nothing else.
+controller.quorum.voters={% for host in groups['kafka_controllers'] -%}
+{{ hostvars[host].kafka_node_id }}@{{ hostvars[host].kafka_controller_host }}:{{ kafka_controller_port }}
+{%- if not loop.last %},{% endif %}
+{%- endfor %}
+
+{% endif %}
+############################# Listeners #############################
+#
+# One address can never serve both the cluster and the outside world:
+#   INTERNAL   reachable under the node's own hostname, used broker to broker
+#   EXTERNAL   reachable from outside, advertised under a different address
+#   CONTROLLER quorum traffic only, never advertised
+#
+{% set listeners = [] %}
+{% set advertised = [] %}
+{% set protocol_map = [] %}
+{% if 'broker' in kafka_process_roles %}
+{%   set _ = listeners.append(kafka_internal_listener ~ '://:' ~ kafka_internal_port) %}
+{%   set _ = advertised.append(kafka_internal_listener ~ '://' ~ kafka_internal_host ~ ':' ~ kafka_internal_port) %}
+{%   set _ = protocol_map.append(kafka_internal_listener ~ ':' ~ kafka_internal_security_protocol) %}
+{%   if kafka_external_listener_enabled | bool %}
+{%     set _ = listeners.append(kafka_external_listener ~ '://:' ~ kafka_external_port) %}
+{%     set _ = advertised.append(kafka_external_listener ~ '://' ~ kafka_external_advertised_host ~ ':' ~ kafka_external_advertised_port) %}
+{%     set _ = protocol_map.append(kafka_external_listener ~ ':' ~ kafka_external_security_protocol) %}
+{%   endif %}
+{% endif %}
+{% if 'controller' in kafka_process_roles %}
+{%   set _ = listeners.append(kafka_controller_listener ~ '://:' ~ kafka_controller_port) %}
+{%   set _ = protocol_map.append(kafka_controller_listener ~ ':' ~ kafka_controller_security_protocol) %}
+{% endif %}
+listeners={{ listeners | join(',') }}
+{% if advertised | length > 0 %}
+# The controller listener is deliberately absent here: Kafka rejects a config
+# that advertises it.
+advertised.listeners={{ advertised | join(',') }}
+{% endif %}
+listener.security.protocol.map={{ protocol_map | join(',') }}
+{% if 'broker' in kafka_process_roles %}
+inter.broker.listener.name={{ kafka_internal_listener }}
+{% endif %}
+{% if 'controller' in kafka_process_roles %}
+controller.listener.names={{ kafka_controller_listener }}
+{% endif %}
+
+############################# Storage #############################
+
+log.dirs={{ kafka_data_dir }}
+num.recovery.threads.per.data.dir=2
+
+############################# Durability #############################
+#
+# Three replicas with two required in sync: the cluster survives losing one
+# broker without data loss, and refuses writes after losing two. Refusing is
+# the point — the alternative is silently accepting data it cannot protect.
+#
+default.replication.factor={{ kafka_default_replication_factor }}
+min.insync.replicas={{ kafka_min_insync_replicas }}
+num.partitions={{ kafka_num_partitions }}
+
+# Kafka's own bookkeeping topics need the same durability as user data.
+offsets.topic.replication.factor={{ kafka_offsets_topic_replication_factor }}
+transaction.state.log.replication.factor={{ kafka_transaction_state_log_replication_factor }}
+transaction.state.log.min.isr={{ kafka_transaction_state_log_min_isr }}
+
+# A typo in a client should not create a single-replica topic in production.
+auto.create.topics.enable={{ kafka_auto_create_topics_enable | lower }}
+
+############################# Retention #############################
+
+log.retention.hours={{ kafka_log_retention_hours }}
+log.segment.bytes={{ kafka_log_segment_bytes }}
+log.retention.check.interval.ms={{ kafka_log_retention_check_interval_ms }}
+
+############################# Threads and sockets #############################
+
+num.network.threads={{ kafka_num_network_threads }}
+num.io.threads={{ kafka_num_io_threads }}
+socket.send.buffer.bytes={{ kafka_socket_send_buffer_bytes }}
+socket.receive.buffer.bytes={{ kafka_socket_receive_buffer_bytes }}
+socket.request.max.bytes={{ kafka_socket_request_max_bytes }}

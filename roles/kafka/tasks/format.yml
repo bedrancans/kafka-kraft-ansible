@@ -1,0 +1,34 @@
+---
+# The single most destructive task in this repository.
+#
+# kafka-storage.sh format writes the cluster id and the initial metadata into
+# log.dirs. Running it against a directory that already holds data throws that
+# metadata away. Two independent guards prevent that:
+#
+#   1. the stat check below, so Ansible skips the task entirely on a re-run
+#      (and the skip is visible in the recap, which is how idempotency is
+#      demonstrated rather than assumed)
+#   2. --ignore-formatted, so even if the guard were wrong the command itself
+#      refuses to reformat
+#
+# Note: no --standalone or --initial-controllers flag. Those belong to the
+# dynamic quorum (KIP-853); this cluster uses a static controller.quorum.voters
+# list and passing them together is a configuration error.
+
+- name: Check whether the storage directory is already formatted
+  ansible.builtin.stat:
+    path: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_meta_properties
+
+- name: Format the KRaft storage directory
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-storage.sh format
+      --config {{ kafka_config_dir }}/server.properties
+      --cluster-id {{ kafka_cluster_id }}
+      --ignore-formatted
+  become: true
+  become_user: "{{ kafka_user }}"
+  register: kafka_format_result
+  changed_when: kafka_format_result.rc == 0
+  when: not kafka_meta_properties.stat.exists

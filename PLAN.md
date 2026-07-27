@@ -80,7 +80,7 @@ kafka-kraft-ansible/
 │   ├── site.yml  verify.yml  rolling-restart.yml  upgrade.yml  teardown.yml
 ├── roles/
 │   ├── common/  java/
-│   ├── kafka_kraft/             # ★ the main role
+│   ├── kafka/                   # ★ the main role (broker + controller)
 │   ├── kafka_topics/
 │   ├── kafka_ui/
 │   ├── schema_registry/
@@ -178,7 +178,7 @@ system bus, so the lab image must install `dbus` too.
 
 ---
 
-### PHASE 2 — `kafka_kraft` role → a working cluster ★
+### PHASE 2 — `kafka` role → a working cluster ★ ✅
 
 **Steps, in this order**
 
@@ -218,11 +218,34 @@ system bus, so the lab image must install `dbus` too.
     `kafka-metadata-quorum.sh --describe` showing three voters and a leader.
 
 **DoD**
-- `ansible-playbook site.yml --tags kafka` → three brokers `active (running)`
-- `kafka-metadata-quorum.sh --describe` → LeaderId set, three voters
-- a `--replication-factor 3` topic is created, produce and consume work
-- the host can reach `localhost:39091` (EXTERNAL listener check)
-- the second run reports `changed=0` and the **format task is skipped**
+- `ansible-playbook site.yml --tags kafka` → three brokers `active (running)` ✅
+- `kafka-metadata-quorum.sh describe --status` → LeaderId set, three voters ✅
+- a `--replication-factor 3` topic is created, produce and consume work ✅
+  (leadership spread over all three brokers, ISR complete)
+- an external client on the host reaches `localhost:39091` and sees the
+  brokers advertised as `localhost:3909N` ✅
+- the second run reports `changed=0` and the **format task is skipped** ✅
+
+**Lessons learned**
+
+- The role is named `kafka`, not `kafka_kraft`: ansible-lint's `production`
+  profile requires role variables to be prefixed with the role name, and
+  `kafka_kraft_heap_size` reads far worse than `kafka_heap_size`.
+- The service account's home must not be `log.dirs`. It was, and Ansible's
+  `become_user` created `~/.ansible/tmp` inside the data directory; Kafka
+  then refused to start with *"Found directory /var/lib/kafka/data/.ansible,
+  Kafka's log directories should only contain Kafka topic data"*. Home is now
+  `/var/lib/kafka` with data in `/var/lib/kafka/data`.
+- `kafka-storage.sh format` in 4.x also accepts `--standalone`,
+  `--no-initial-controllers` and `--initial-controllers`. Those belong to the
+  dynamic quorum (KIP-853) and must not be combined with a static
+  `controller.quorum.voters` list. The syntax was read from the installed
+  distribution's own `--help` rather than assumed.
+- `--ignore-formatted` makes the format command itself idempotent, but the
+  role still guards it with a `stat` on `meta.properties` so the skip is
+  visible in the play recap.
+- Kafka 4.x dropped `kafka.tools.GetOffsetShell`; the replacement is
+  `bin/kafka-get-offsets.sh`.
 
 → `git tag v0.1.0`
 

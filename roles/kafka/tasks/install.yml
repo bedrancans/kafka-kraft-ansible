@@ -1,0 +1,58 @@
+---
+# Download, verify, unpack, then point a stable symlink at the result.
+
+# get_url refuses to keep a file whose checksum does not match, so a corrupted
+# download or a tampered mirror fails here instead of at broker start.
+- name: Download the Kafka distribution
+  ansible.builtin.get_url:
+    url: "{{ kafka_download_url }}"
+    dest: "{{ kafka_download_dir }}/{{ kafka_archive_name }}"
+    checksum: "sha512:{{ kafka_archive_sha512 }}"
+    owner: root
+    group: root
+    mode: "0644"
+    timeout: 120
+
+- name: Create the versioned installation directory
+  ansible.builtin.file:
+    path: "{{ kafka_versioned_dir }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0755"
+
+# The archive contains a kafka_2.13-4.3.1/ top level directory; stripping it
+# keeps the version out of the paths inside kafka_versioned_dir.
+# `creates` is what makes this task idempotent: unarchive would otherwise
+# rewrite every file on every run.
+- name: Unpack the Kafka distribution
+  ansible.builtin.unarchive:
+    src: "{{ kafka_download_dir }}/{{ kafka_archive_name }}"
+    dest: "{{ kafka_versioned_dir }}"
+    remote_src: true
+    extra_opts:
+      - --strip-components=1
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    creates: "{{ kafka_versioned_dir }}/bin/kafka-server-start.sh"
+
+# /opt/kafka always points at the active version. Upgrading is then a symlink
+# flip plus a rolling restart, and rolling back is the same flip in reverse.
+- name: Point the stable path at this version
+  ansible.builtin.file:
+    src: "{{ kafka_versioned_dir }}"
+    dest: "{{ kafka_install_dir }}"
+    state: link
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+  notify: Restart kafka
+
+# Kafka ships its default configs inside the distribution. We render our own
+# into /etc/kafka, so the shipped ones are only a reference.
+- name: Record the installed version
+  ansible.builtin.copy:
+    content: "{{ kafka_version }}\n"
+    dest: "{{ kafka_config_dir }}/installed-version"
+    owner: root
+    group: root
+    mode: "0644"

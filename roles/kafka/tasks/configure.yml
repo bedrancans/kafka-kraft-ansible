@@ -1,0 +1,21 @@
+---
+# Both templates notify the restart handler, so a config change causes exactly
+# one restart at the end of the play rather than one per file.
+
+- name: Render server.properties
+  ansible.builtin.template:
+    src: server.properties.j2
+    dest: "{{ kafka_config_dir }}/server.properties"
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: "0644"
+  notify: Restart kafka
+
+- name: Render the service environment file
+  ansible.builtin.template:
+    src: kafka.env.j2
+    dest: "{{ kafka_config_dir }}/kafka.env"
+    owner: root
+    group: "{{ kafka_group }}"
+    mode: "0640"
+  notify: Restart kafka
