@@ -1,0 +1,78 @@
+---
+# Full-cluster scenario: three brokers plus the tools node, converged with the
+# real playbooks/site.yml rather than a test-only copy of it. Molecule runs
+# converge twice and fails the run if the second pass reports any change,
+# which is how idempotency stays an enforced property instead of a claim.
+
+driver:
+  name: podman
+
+platforms:
+  # The anchor keeps the four nodes from drifting apart; only the name and the
+  # group membership differ. systemd has to be a string here, not a YAML
+  # boolean, and it makes podman mount /run itself.
+  - name: kafka-1
+    <<: &node
+      image: molecule-kafka-node:24.04
+      dockerfile: Containerfile
+      pre_build_image: false
+      command: /sbin/init
+      systemd: "always"
+      # Without a shared network every rootless container gets the same
+      # slirp4netns address (10.0.2.100), so "kafka-2" resolves to the caller
+      # itself and the Raft quorum never forms. The driver creates this
+      # network when a platform names one.
+      network: molecule-kafka
+    groups:
+      - kafka_brokers
+      - kafka_controllers
+
+  - name: kafka-2
+    <<: *node
+    groups:
+      - kafka_brokers
+      - kafka_controllers
+
+  - name: kafka-3
+    <<: *node
+    groups:
+      - kafka_brokers
+      - kafka_controllers
+
+  - name: tools-1
+    <<: *node
+    groups:
+      - kafka_ui
+
+provisioner:
+  name: ansible
+  # Molecule builds its own ansible environment and ignores the repository's
+  # ansible.cfg, so the roles and collections have to be pointed at explicitly.
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/roles"
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.ansible/collections"
+  config_options:
+    defaults:
+      callbacks_enabled: profile_tasks
+      interpreter_python: auto_silent
+  inventory:
+    # The scenario reuses the real inventory variables instead of restating
+    # them, so CI validates the same configuration the lab runs.
+    # Molecule skips its own inline host_vars once links are declared, so the
+    # per-node identities live in a real directory next to this file.
+    links:
+      group_vars: ../../inventories/lab/group_vars/
+      host_vars: host_vars/
+
+verifier:
+  name: ansible
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

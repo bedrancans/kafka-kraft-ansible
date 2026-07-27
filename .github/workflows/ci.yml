@@ -1,0 +1,77 @@
+---
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast feedback: syntax and rule violations show up in under a minute,
+  # long before the cluster test finishes.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linters
+        run: pipx install ansible-lint && pipx install yamllint
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+  # The real test: four containers, the actual site.yml, converged twice.
+  # Molecule fails the run if the second pass reports any change, so
+  # idempotency is enforced rather than assumed.
+  molecule:
+    name: Molecule (4-node cluster)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show podman version
+        run: podman --version
+
+      - name: Install molecule
+        run: |
+          pipx install molecule
+          pipx inject molecule 'molecule-plugins[podman]'
+
+      - name: Install collections
+        run: |
+          pipx install --include-deps ansible
+          ansible-galaxy collection install -r requirements.yml \
+            -p .ansible/collections
+
+      - name: molecule test
+        run: molecule test
+
+      # Kafka logs are the only useful artifact when a broker refuses to
+      # start, and by then molecule has already torn the containers down.
+      - name: Upload molecule log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: molecule-log
+          path: ~/.cache/molecule/
+          if-no-files-found: ignore
+          retention-days: 7

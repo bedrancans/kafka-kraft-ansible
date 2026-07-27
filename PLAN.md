@@ -306,7 +306,7 @@ system bus, so the lab image must install `dbus` too.
 
 ---
 
-### PHASE 4 — Testing and CI
+### PHASE 4 — Testing and CI ✅
 
 **Steps**
 
@@ -318,8 +318,29 @@ system bus, so the lab image must install `dbus` too.
 4. Add the CI badge to the README.
 
 **DoD**
-- `molecule test` is green locally
-- the GitHub Actions badge is green
+- `molecule test` is green locally ✅ (7 actions, 7 successful, and the
+  `idempotence` action passes, so a second converge changes nothing)
+- the GitHub Actions badge is green ✅
+
+**Lessons learned**
+
+- Rootless podman gives every container the same slirp4netns address
+  (`10.0.2.100`) unless the platforms name a shared network. The symptom was
+  not a connection error but the opposite: `kafka-1` reached "kafka-2:9093"
+  successfully — because it was talking to itself — and the Raft quorum
+  rejected the votes with `voter key ... doesn't match the local key`.
+  Reachability and correctness are different questions.
+- Molecule's schema error for `systemd: true` rendered as an empty string.
+  Running the driver's own schema (`api.drivers()["podman"].schema_file()`)
+  through jsonschema gave the real message: the field takes the strings
+  `'true'`, `'false'` or `'always'`, not a YAML boolean.
+- Molecule ignores the repository's `ansible.cfg`, so `ANSIBLE_ROLES_PATH`
+  and `ANSIBLE_COLLECTIONS_PATH` have to be set in `provisioner.env`.
+- Once `inventory.links` is declared, molecule stops writing its own inline
+  `host_vars`, so the per-node identities live in a real directory.
+- `converge.yml` imports `playbooks/site.yml` instead of restating it.
+  A scenario that converged a hand-written copy would only prove the copy
+  works.
 
 → `git tag v0.3.0`
 

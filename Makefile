@@ -2,7 +2,7 @@
 INV ?= inventories/lab
 SHELL := /bin/bash
 
-.PHONY: help lab-up lab-down lab-reset ping lint site verify cluster-id
+.PHONY: help lab-up lab-down lab-reset ping lint test site verify cluster-id deps
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -22,6 +22,12 @@ ping:  ## Verify connectivity to every node
 lint:  ## Run yamllint + ansible-lint
 	yamllint .
 	ansible-lint
+
+deps:  ## Install the collections from requirements.yml
+	ansible-galaxy collection install -r requirements.yml -p .ansible/collections
+
+test:  ## Full molecule run: four nodes from scratch, converged twice
+	molecule test
 
 site:  ## Deploy every component
 	ansible-playbook -i $(INV) playbooks/site.yml

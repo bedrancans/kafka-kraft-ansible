@@ -1,0 +1,5 @@
+---
+# Converge runs the production playbook itself. A scenario that converged a
+# hand-written copy would only prove the copy works.
+- name: Converge
+  ansible.builtin.import_playbook: ../../playbooks/site.yml

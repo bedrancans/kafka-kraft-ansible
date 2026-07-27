@@ -1,0 +1,5 @@
+---
+# Same idea: the verification playbook shipped with the repository, so CI and
+# an operator checking a real cluster run identical assertions.
+- name: Verify
+  ansible.builtin.import_playbook: ../../playbooks/verify.yml

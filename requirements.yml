@@ -6,3 +6,5 @@ collections:
     version: ">=1.5.4"
   - name: community.general  # java_keystore (phase 8), misc helpers
     version: ">=8.0.0"
+  - name: containers.podman  # molecule's podman driver connection plugin
+    version: ">=1.13.0"

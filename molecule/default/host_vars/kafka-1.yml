@@ -1,0 +1,5 @@
+---
+# Per-node identity. In the lab these live in inventories/lab/hosts.yml;
+# molecule generates its own inventory, so the scenario carries them here.
+kafka_node_id: 1
+kafka_external_advertised_port: 39091

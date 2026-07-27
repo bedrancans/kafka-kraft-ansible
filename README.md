@@ -1,8 +1,15 @@
 # kafka-kraft-ansible
 
+[![CI](https://github.com/bedrancans/kafka-kraft-ansible/actions/workflows/ci.yml/badge.svg)](https://github.com/bedrancans/kafka-kraft-ansible/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A three-broker **Apache Kafka cluster in KRaft mode, deployed with Ansible** —
 plus a modular layout that lets you add Kafka UI, Schema Registry and Kafka
 Connect *without taking the cluster down*.
+
+Every push builds a four-node cluster from scratch, runs the same `site.yml`
+an operator would run, converges it twice and fails if the second pass changes
+anything.
 
 🇹🇷 [Türkçe README](README.tr.md)
 

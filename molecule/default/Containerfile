@@ -1,0 +1,45 @@
+# Test node image for the molecule scenario.
+#
+# Deliberately smaller than lab/Containerfile: molecule talks to the
+# containers through the podman connection plugin, so no sshd and no ansible
+# user are needed here. Everything the roles actually depend on — systemd,
+# dbus, python3, sudo — is identical.
+#
+# The lab exercises the SSH and systemd path a real VM would use; this image
+# exercises the role logic in CI. They verify different things on purpose.
+
+FROM docker.io/library/ubuntu:24.04
+
+ENV container=podman
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv dbus \
+        python3 python3-apt \
+        sudo acl \
+        iproute2 iputils-ping netcat-openbsd \
+        curl ca-certificates procps \
+    && apt-get clean
+# The apt lists are kept for the same reason as in lab/Containerfile:
+# deleting them leaves apt's freshness stamp behind and breaks any task
+# that uses cache_valid_time.
+
+# Without dbus, systemctl only works as root.
+RUN systemctl enable dbus.service
+
+# Units that are meaningless inside a container.
+RUN systemctl mask \
+        dev-hugepages.mount \
+        sys-fs-fuse-connections.mount \
+        systemd-logind.service \
+        systemd-udevd.service \
+        systemd-udev-trigger.service \
+        systemd-networkd.service \
+        systemd-resolved.service \
+        getty.target \
+        console-getty.service
+
+STOPSIGNAL SIGRTMIN+3
+
+CMD ["/sbin/init"]

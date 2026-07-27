@@ -1,0 +1,21 @@
+---
+# Molecule containers have no shared DNS, and KRaft addresses every node by
+# hostname: controller.quorum.voters, advertised.listeners and the UI's
+# bootstrap list are all names, not IPs. Populating /etc/hosts gives the
+# scenario the same name resolution the lab gets from aardvark-dns.
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Make every node resolvable from every other node
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item].ansible_default_ipv4.address }} {{ item }}"
+        regexp: "\\s{{ item }}$"
+        state: present
+        # /etc/hosts is a bind mount inside the container, so the atomic
+        # replace lineinfile normally performs would fail.
+        unsafe_writes: true
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
