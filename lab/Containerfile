@@ -1,0 +1,57 @@
+# Lab node imajı — "VM gibi davranan" container.
+#
+# Amaç: içinde gerçek systemd ve sshd çalışsın ki Ansible rolleri
+# gerçek bir VM'e bağlanıyormuş gibi (SSH + systemd) çalışsın.
+# Böylece prod'a geçerken tek değişen şey inventory dosyası olur.
+
+FROM docker.io/library/ubuntu:24.04
+
+ENV container=podman
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv \
+        openssh-server \
+        python3 python3-apt \
+        sudo iproute2 iputils-ping netcat-openbsd \
+        curl ca-certificates procps less \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Container'da anlamsız olan ya da hata üreten unit'ler.
+# Ağ ve DNS'i podman yönetiyor; udev/logind/getty container'da gereksiz.
+RUN systemctl mask \
+        dev-hugepages.mount \
+        sys-fs-fuse-connections.mount \
+        systemd-logind.service \
+        systemd-udevd.service \
+        systemd-udev-trigger.service \
+        systemd-networkd.service \
+        systemd-resolved.service \
+        getty.target \
+        console-getty.service
+
+# Ubuntu 24.04 sshd'yi socket activation ile getiriyor;
+# klasik servis daha öngörülebilir.
+RUN systemctl disable ssh.socket >/dev/null 2>&1 || true \
+    && systemctl enable ssh.service
+
+# Ansible'ın bağlanacağı kullanıcı
+ARG ANSIBLE_USER=ansible
+RUN useradd -m -s /bin/bash "${ANSIBLE_USER}" \
+    && printf '%s ALL=(ALL) NOPASSWD:ALL\n' "${ANSIBLE_USER}" > "/etc/sudoers.d/${ANSIBLE_USER}" \
+    && chmod 0440 "/etc/sudoers.d/${ANSIBLE_USER}" \
+    && install -d -o "${ANSIBLE_USER}" -g "${ANSIBLE_USER}" -m 0700 "/home/${ANSIBLE_USER}/.ssh"
+
+# lab-up.sh bu dosyayı build'den hemen önce üretir (repoya girmez)
+COPY authorized_keys /home/ansible/.ssh/authorized_keys
+RUN chown ansible:ansible /home/ansible/.ssh/authorized_keys \
+    && chmod 0600 /home/ansible/.ssh/authorized_keys
+
+EXPOSE 22
+
+# systemd'nin düzgün kapanabilmesi için
+STOPSIGNAL SIGRTMIN+3
+
+CMD ["/sbin/init"]

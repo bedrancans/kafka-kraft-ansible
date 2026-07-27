@@ -1,0 +1,23 @@
+# Ansible
+*.retry
+.vault_pass
+*.log
+
+# Lab — anahtar build context'e kopyalanır, repoya girmez
+lab/authorized_keys
+
+# İndirilen artefaktlar
+*.tar.gz
+*.tgz
+*.jar
+
+# Python / molecule
+.venv/
+__pycache__/
+*.pyc
+.molecule/
+
+# Editör
+.idea/
+.vscode/
+*.swp
