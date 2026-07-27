@@ -1,0 +1,60 @@
+{{ ansible_managed | comment }}
+#
+# Rendered from roles/kafka_connect/templates/connect-distributed.properties.j2
+
+# Derived from the kafka_brokers inventory group, like every other component.
+bootstrap.servers={{ kafka_bootstrap_servers }}
+
+# Workers sharing this id share connectors and rebalance among themselves.
+# Two unrelated clusters must never share it.
+group.id={{ kafka_connect_group_id }}
+
+############################# State #############################
+#
+# A distributed worker keeps everything it knows in Kafka. That is what lets a
+# worker be replaced without losing connectors — and why these topics are
+# compacted and replicated like user data. They are created up front by the
+# kafka_topics role from the declaration in vars/required_topics.yml.
+#
+config.storage.topic={{ kafka_connect_configs_topic }}
+offset.storage.topic={{ kafka_connect_offsets_topic }}
+status.storage.topic={{ kafka_connect_status_topic }}
+{% for topic in kafka_connect_required_topics %}
+{% if topic.name == kafka_connect_configs_topic %}
+config.storage.replication.factor={{ topic.replication_factor }}
+{% elif topic.name == kafka_connect_offsets_topic %}
+offset.storage.replication.factor={{ topic.replication_factor }}
+offset.storage.partitions={{ topic.partitions }}
+{% elif topic.name == kafka_connect_status_topic %}
+status.storage.replication.factor={{ topic.replication_factor }}
+status.storage.partitions={{ topic.partitions }}
+{% endif %}
+{% endfor %}
+
+############################# Converters #############################
+
+key.converter={{ kafka_connect_key_converter }}
+value.converter={{ kafka_connect_value_converter }}
+key.converter.schemas.enable={{ kafka_connect_schemas_enable | lower }}
+value.converter.schemas.enable={{ kafka_connect_schemas_enable | lower }}
+{% if groups['schema_registry'] | default([]) | length > 0 %}
+
+# Schema Registry is deployed, so Avro converters can reach it. Set
+# kafka_connect_value_converter to the Avro converter to actually use it.
+key.converter.schema.registry.url=http://{{ groups['schema_registry'][0] }}:{{ schema_registry_port }}
+value.converter.schema.registry.url=http://{{ groups['schema_registry'][0] }}:{{ schema_registry_port }}
+{% endif %}
+
+############################# REST #############################
+
+listeners=http://{{ kafka_connect_bind_address }}:{{ kafka_connect_port }}
+# What other workers and the UI use to reach this one. The bind address may be
+# 0.0.0.0; the advertised one must be routable.
+rest.advertised.host.name={{ inventory_hostname }}
+rest.advertised.port={{ kafka_connect_port }}
+
+############################# Plugins #############################
+#
+# Kept outside the distribution directory so a Kafka upgrade does not take the
+# connectors with it.
+plugin.path={{ kafka_connect_plugin_dir }},{{ kafka_install_dir }}/libs

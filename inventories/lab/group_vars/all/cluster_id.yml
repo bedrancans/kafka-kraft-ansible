@@ -1,5 +1,10 @@
 ---
-# The KRaft cluster id. Generated ONCE and then never changed: it is the
+# The KRaft cluster id. Cluster-wide rather than broker-only: the brokers
+# format their storage with it, and every component checks it to confirm it
+# joined the cluster it was pointed at rather than a different one that
+# happened to be listening.
+#
+# Generated ONCE and then never changed: it is the
 # identity every node checks when it joins the quorum. Regenerating it makes
 # the existing on-disk metadata unreadable.
 #

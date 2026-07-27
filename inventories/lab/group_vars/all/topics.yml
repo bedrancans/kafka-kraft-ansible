@@ -1,0 +1,18 @@
+---
+# Topics that belong to the cluster rather than to any one component.
+# Components declare their own in roles/<component>/vars/required_topics.yml;
+# this list is for everything else, and it is consumed by the kafka_topics
+# role exactly the same way.
+#
+# connect-demo exists because auto.create.topics.enable is false on the
+# brokers. A source connector writing to a topic nobody created gets
+# UNKNOWN_TOPIC_OR_PARTITION and retries forever while reporting RUNNING —
+# which is the failure mode that setting is meant to prevent: a typo in a
+# client config creating a single-replica topic in production.
+kafka_topics_declarations:
+  - name: connect-demo
+    partitions: 3
+    replication_factor: 3
+    config:
+      - key: min.insync.replicas
+        value: 2

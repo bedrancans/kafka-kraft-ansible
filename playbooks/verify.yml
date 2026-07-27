@@ -53,3 +53,13 @@
       ansible.builtin.include_role:
         name: schema_registry
         tasks_from: verify.yml
+
+- name: Verify Kafka Connect
+  hosts: kafka_connect
+  become: true
+  tags: [kafka_connect]
+  tasks:
+    - name: Run the kafka_connect role checks
+      ansible.builtin.include_role:
+        name: kafka_connect
+        tasks_from: verify.yml

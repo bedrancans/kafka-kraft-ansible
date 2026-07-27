@@ -1,0 +1,29 @@
+---
+# Creates the topics the cluster's components need, before those components
+# start looking for them.
+#
+# Rule 5 of the modularity contract: a component declares what it needs on the
+# broker side, it does not reach over and create it. Without this role the
+# topics still appear — Kafka Connect and Schema Registry create their own —
+# but with whatever settings those clients happen to ask for, and nobody has
+# stated anywhere what those settings should be. The difference is between a
+# topic whose replication factor was chosen and one that came out right.
+
+# Where the declarations come from. Each entry names an inventory group and
+# the variable a deployed component publishes in its vars/required_topics.yml;
+# groups with no hosts are skipped, so a component that is not deployed
+# contributes nothing.
+kafka_topics_components:
+  - group: schema_registry
+    var: schema_registry_required_topics
+  - group: kafka_connect
+    var: kafka_connect_required_topics
+
+# Topics that belong to the cluster rather than to any one component.
+# Same shape as the declarations above.
+kafka_topics_declarations: []
+
+# Existing topics are never re-partitioned or re-replicated: both are
+# disruptive and neither is something a converge run should do behind your
+# back. A mismatch is reported instead.
+kafka_topics_reconcile_config: true

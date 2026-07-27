@@ -1,0 +1,91 @@
+---
+# Runs on one broker; the cluster-wide view is the same from any of them.
+
+- name: List the topics that already exist
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-topics.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --list
+  register: kafka_topics_existing
+  changed_when: false
+
+# Creating with the configuration in one call, rather than creating and then
+# altering, means the topic never exists with the wrong retention policy —
+# not even for the second in between.
+- name: Create the topics that are missing
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-topics.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --create --topic {{ item.name }}
+      --partitions {{ item.partitions }}
+      --replication-factor {{ item.replication_factor }}
+      {% for entry in item.config | default([]) %}
+      --config {{ entry.key }}={{ entry.value }}
+      {% endfor %}
+  loop: "{{ kafka_topics_effective }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in kafka_topics_existing.stdout_lines
+  changed_when: true
+
+- name: Describe every declared topic
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-topics.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --describe --topic {{ item.name }}
+  loop: "{{ kafka_topics_effective }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: kafka_topics_described
+  changed_when: false
+
+# Partition count and replication factor are deliberately reported rather than
+# corrected. Adding partitions changes which partition a key hashes to, and
+# changing replication needs a reassignment plan; neither belongs in a
+# converge run someone kicked off to change something else.
+- name: Report any topic whose shape differs from its declaration
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.name }} declares {{ item.item.partitions }} partition(s)
+      at RF {{ item.item.replication_factor }}, the cluster reports
+      {{ kafka_topic_partitions }} at RF {{ kafka_topic_rf }}.
+      Changing either is a deliberate operation, not something this role does.
+  loop: "{{ kafka_topics_described.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  vars:
+    # Split rather than regex: a backreference argument's escaping does not
+    # survive a YAML block scalar intact, and the describe output is regular
+    # enough that splitting on the field name is both shorter and safer.
+    kafka_topic_partitions: "{{ item.stdout.split('PartitionCount:') | last | trim | split() | first }}"
+    kafka_topic_rf: "{{ item.stdout.split('ReplicationFactor:') | last | trim | split() | first }}"
+  when:
+    - kafka_topic_partitions != item.item.partitions | string
+      or kafka_topic_rf != item.item.replication_factor | string
+
+# Topic configuration, unlike shape, is a live setting and safe to converge.
+# The comparison is against the exact "key=value" pairs Kafka reports, so a
+# topic whose cleanup.policy is "compact,delete" does not read as "compact".
+- name: Reconcile the declared topic configuration
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-configs.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --entity-type topics --entity-name {{ item.0.name }}
+      --alter --add-config {{ item.1.key }}={{ item.1.value }}
+  loop: "{{ kafka_topics_effective | subelements('config', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }}: {{ item.1.key }}={{ item.1.value }}"
+  vars:
+    kafka_topic_config_pairs: >-
+      {{ (kafka_topics_described.results
+          | selectattr('item.name', 'equalto', item.0.name)
+          | map(attribute='stdout') | first
+         ).split('Configs:') | last | trim | split(',') | map('trim') | list }}
+  when:
+    - kafka_topics_reconcile_config | bool
+    - (item.1.key ~ '=' ~ item.1.value) not in kafka_topic_config_pairs
+  changed_when: true

@@ -5,8 +5,10 @@
 # The version is pinned on purpose. "Install the latest" makes a playbook
 # that works today and installs something else tomorrow.
 # Upgrading is a deliberate edit here plus playbooks/upgrade.yml.
-kafka_version: "4.3.1"
-kafka_scala_version: "2.13"
+# Defaults to the cluster-wide distribution so the broker and Kafka Connect
+# cannot drift apart; playbooks/upgrade.yml overrides it with -e.
+kafka_version: "{{ kafka_distribution_version | default('4.3.1') }}"
+kafka_scala_version: "{{ kafka_distribution_scala_version | default('2.13') }}"
 
 kafka_mirror: "https://downloads.apache.org/kafka"
 kafka_archive_name: "kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
@@ -15,9 +17,7 @@ kafka_download_url: "{{ kafka_mirror }}/{{ kafka_version }}/{{ kafka_archive_nam
 # Published next to the archive as <archive>.sha512.
 # get_url refuses to install anything that does not match, which is what
 # turns "downloaded a file" into "downloaded the right file".
-# A hash cannot be wrapped, hence the exemption.
-# yamllint disable-line rule:line-length
-kafka_archive_sha512: "c7d7b2318cb51aa0c61d3246a51c349210073c5c9b754947ef965a439f2f939e8600f204e134a75ac31faf3829c9370960ef7c6a9886c8a1dbf0339a21f4c54c"
+kafka_archive_sha512: "{{ kafka_distribution_sha512 }}"
 
 # ===========================================================================
 # Paths and identity

@@ -1,0 +1,68 @@
+---
+# ===========================================================================
+# Distribution
+# ===========================================================================
+# Kafka Connect ships inside the Apache Kafka archive — connect-distributed.sh
+# is right next to kafka-server-start.sh. There is nothing extra to download,
+# but the host does need the distribution, so this role installs it by reusing
+# the broker role's install tasks rather than duplicating them.
+#
+# The version comes from the cluster-wide setting so a worker cannot end up
+# speaking a different release than the brokers it connects to.
+kafka_connect_kafka_version: "{{ kafka_distribution_version }}"
+
+# ===========================================================================
+# Runtime
+# ===========================================================================
+# Same JVM the brokers use: it is the same distribution.
+kafka_connect_java_major: 21
+
+kafka_connect_user: kafka-connect
+kafka_connect_group: kafka-connect
+
+kafka_connect_config_dir: /etc/kafka-connect
+kafka_connect_home_dir: /var/lib/kafka-connect
+kafka_connect_log_dir: /var/log/kafka-connect
+# Where extra connector jars are dropped. Kept outside the distribution
+# directory so an upgrade does not take the connectors with it.
+kafka_connect_plugin_dir: /opt/kafka-connect-plugins
+
+kafka_connect_bind_address: "0.0.0.0"
+
+# Identifies the worker group. Workers sharing this id share connectors and
+# rebalance among themselves; two unrelated clusters must not share it.
+kafka_connect_group_id: "{{ kafka_cluster_name }}-connect"
+
+# ===========================================================================
+# State topics — declared in vars/required_topics.yml
+# ===========================================================================
+# A distributed worker keeps everything in Kafka, which is what lets a worker
+# be replaced without losing connectors. Names repeated here because
+# connect-distributed.properties has to name them.
+kafka_connect_configs_topic: connect-configs
+kafka_connect_offsets_topic: connect-offsets
+kafka_connect_status_topic: connect-status
+
+# ===========================================================================
+# Converters
+# ===========================================================================
+# JSON without an embedded schema by default: the least surprising thing for
+# someone poking at a topic with a console consumer. Switching to Avro means
+# pointing these at Schema Registry, which is why the URL is rendered
+# conditionally in the template.
+kafka_connect_key_converter: org.apache.kafka.connect.json.JsonConverter
+kafka_connect_value_converter: org.apache.kafka.connect.json.JsonConverter
+kafka_connect_schemas_enable: false
+
+kafka_connect_heap_size: "384m"
+
+# ===========================================================================
+# systemd
+# ===========================================================================
+kafka_connect_service_name: kafka-connect
+kafka_connect_service_restart_sec: 10
+kafka_connect_service_stop_timeout_sec: 60
+kafka_connect_service_nofile_limit: 16384
+
+# How long verify.yml waits for the REST API to answer.
+kafka_connect_verify_timeout_sec: 120

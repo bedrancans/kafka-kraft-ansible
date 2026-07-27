@@ -1,0 +1,33 @@
+---
+# Loads the declaration file of every component that is actually deployed.
+# A component whose group is empty contributes nothing, so the effective topic
+# list follows the inventory rather than the contents of roles/.
+
+- name: Load the declarations of deployed components
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../{{ item.group }}/vars/required_topics.yml"
+  when: groups[item.group] | default([]) | length > 0
+  loop: "{{ kafka_topics_components }}"
+  loop_control:
+    label: "{{ item.group }}"
+
+- name: Build the effective topic list
+  ansible.builtin.set_fact:
+    kafka_topics_effective: >-
+      {{ kafka_topics_effective | default(kafka_topics_declarations)
+         + lookup('vars', item.var, default=[]) }}
+  when: groups[item.group] | default([]) | length > 0
+  loop: "{{ kafka_topics_components }}"
+  loop_control:
+    label: "{{ item.group }}"
+
+- name: Default to the cluster-wide declarations when no component is deployed
+  ansible.builtin.set_fact:
+    kafka_topics_effective: "{{ kafka_topics_declarations }}"
+  when: kafka_topics_effective is not defined
+
+- name: Report what will be ensured
+  ansible.builtin.debug:
+    msg: >-
+      {{ kafka_topics_effective | length }} declared topic(s):
+      {{ kafka_topics_effective | map(attribute='name') | join(', ') | default('none', true) }}

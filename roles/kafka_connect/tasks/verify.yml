@@ -1,0 +1,57 @@
+---
+- name: Wait for the REST port to accept connections
+  ansible.builtin.wait_for:
+    port: "{{ kafka_connect_port }}"
+    host: 127.0.0.1
+    timeout: "{{ kafka_connect_verify_timeout_sec }}"
+
+# The port opens before the worker has joined its group and read the config
+# topic, so the endpoint that needs that state is what says "ready".
+- name: Wait until the worker lists its connectors
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ kafka_connect_port }}/connectors"
+    return_content: true
+  check_mode: false
+  register: kafka_connect_connectors
+  until: kafka_connect_connectors.status == 200
+  retries: "{{ (kafka_connect_verify_timeout_sec | int / 5) | int }}"
+  delay: 5
+  changed_when: false
+
+- name: Read the worker's identity
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ kafka_connect_port }}/"
+    return_content: true
+  check_mode: false
+  register: kafka_connect_root
+  changed_when: false
+
+- name: Assert the worker joined the expected cluster
+  ansible.builtin.assert:
+    that:
+      - kafka_connect_root.json.kafka_cluster_id | length > 0
+      - kafka_connect_root.json.kafka_cluster_id == kafka_cluster_id
+    fail_msg: >-
+      The worker reports cluster id
+      {{ kafka_connect_root.json.kafka_cluster_id | default('none') }},
+      expected {{ kafka_cluster_id }}. It is talking to a different cluster.
+    success_msg: >-
+      Kafka Connect {{ kafka_connect_root.json.version }} joined
+      {{ kafka_connect_root.json.kafka_cluster_id }}
+      ({{ kafka_connect_connectors.json | length }} connector(s))
+    quiet: true
+
+- name: List the connector plugins the worker found
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ kafka_connect_port }}/connector-plugins"
+    return_content: true
+  check_mode: false
+  register: kafka_connect_plugins
+  changed_when: false
+
+- name: Report the available plugins
+  ansible.builtin.debug:
+    msg: >-
+      {{ kafka_connect_plugins.json | length }} plugin(s):
+      {{ kafka_connect_plugins.json | map(attribute='class')
+         | map('regex_replace', '^.*\.', '') | join(', ') }}

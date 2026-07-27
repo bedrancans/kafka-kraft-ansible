@@ -450,7 +450,7 @@ The procedure and the measurements are written up in
 
 ---
 
-### PHASE 7 — `kafka_connect` and `kafka_topics`
+### PHASE 7 — `kafka_connect` and `kafka_topics` ✅
 
 **Steps**
 
@@ -461,8 +461,40 @@ The procedure and the measurements are written up in
 3. An end-to-end demo with an example connector (FileStream or Datagen).
 
 **DoD**
-- the Connect REST API answers on `:8083` and a connector runs
-- the Connect tab shows up in Kafka UI
+- the Connect REST API answers on `:8083` and a connector runs ✅
+  (a FileStream source connector in `RUNNING` state, streaming appended lines
+  to `connect-demo` live)
+- the Connect tab shows up in Kafka UI ✅
+  (`features` gained `KAFKA_CONNECT`; the UI lists the worker and the
+  connector)
+- the brokers were not restarted ✅ (service start timestamps unchanged)
+- full `site.yml` still reports `changed=0` on the second run ✅
+
+**Lessons learned**
+
+- `auto.create.topics.enable=false` has a consequence worth seeing once: a
+  source connector writing to a topic nobody created sits in `RUNNING` while
+  its producer logs `UNKNOWN_TOPIC_OR_PARTITION` forever. The connector is
+  healthy; the topic is missing. This is precisely the failure the setting
+  exists to force into the open rather than papering over with a
+  single-replica topic created by a typo.
+- `subelements` needs a list, so topic configuration is declared as
+  `- key: … value: …` pairs rather than a mapping. Slightly more verbose to
+  write, considerably simpler to iterate.
+- Regular expressions with backreferences keep losing their escaping inside
+  YAML block scalars — third time in this repository. Parsing the
+  `kafka-topics.sh --describe` output by splitting on the field name is both
+  shorter and immune to the problem.
+- Three things migrated from the broker role's defaults to
+  `group_vars/all/`: the distribution version and checksum, the install path,
+  and the cluster id. Each moved for the same reason — a second component
+  needed it, and the broker role is not where a fact that two roles depend on
+  belongs. The cluster id in particular is what lets any component assert it
+  joined the cluster it was pointed at.
+- Partition count and replication factor of an existing topic are reported,
+  never corrected. Adding partitions changes which partition a key hashes to;
+  changing replication needs a reassignment plan. Neither belongs in a
+  converge run someone started to change something else.
 
 → `git tag v0.6.0`
 

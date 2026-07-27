@@ -1,0 +1,25 @@
+---
+- name: Load this role's topic declarations
+  ansible.builtin.include_vars:
+    file: required_topics.yml
+
+- name: Assert the cluster has brokers to work against
+  ansible.builtin.assert:
+    that:
+      - groups['kafka_brokers'] | default([]) | length > 0
+      - kafka_bootstrap_servers | length > 0
+    fail_msg: >-
+      Kafka Connect stores everything it knows in Kafka, so it needs a
+      cluster. The kafka_brokers group is empty.
+    quiet: true
+
+- name: Resolve the Java runtime for the worker
+  ansible.builtin.include_role:
+    name: java
+    tasks_from: resolve.yml
+  vars:
+    java_required_major: "{{ kafka_connect_java_major }}"
+
+- name: Set the Java home used by the service
+  ansible.builtin.set_fact:
+    kafka_connect_java_home: "{{ java_home }}"

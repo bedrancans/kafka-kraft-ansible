@@ -28,6 +28,17 @@
   roles:
     - role: kafka
 
+# Runs on one broker, after the cluster exists and before the components that
+# need these topics. Creating them here rather than letting each client create
+# its own is the difference between settings that were chosen and settings
+# that happened to come out right.
+- name: Declared topics
+  hosts: kafka_brokers[0]
+  become: true
+  tags: [kafka_topics]
+  roles:
+    - role: kafka_topics
+
 - name: Kafka UI
   hosts: kafka_ui
   become: true
@@ -42,10 +53,9 @@
   roles:
     - role: schema_registry
 
-# --- Phase 7 -----------------------------------------------------------
-# - name: Kafka Connect
-#   hosts: kafka_connect
-#   become: true
-#   tags: [kafka_connect]
-#   roles:
-#     - role: kafka_connect
+- name: Kafka Connect
+  hosts: kafka_connect
+  become: true
+  tags: [kafka_connect]
+  roles:
+    - role: kafka_connect

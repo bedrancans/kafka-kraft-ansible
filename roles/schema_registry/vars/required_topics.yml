@@ -1,0 +1,18 @@
+---
+# Read by the kafka_topics role, which creates this before Schema Registry
+# first starts. Kept in vars/ rather than defaults/ because it is a contract
+# with the cluster, not a knob to tune per environment.
+#
+# Compacted, because these schemas are the only state Schema Registry has —
+# time-based retention would delete them. Single-partition, because the order
+# of registrations is what makes version numbers mean anything. Replicated
+# three ways for the same reason user data is.
+schema_registry_required_topics:
+  - name: _schemas
+    partitions: 1
+    replication_factor: 3
+    config:
+      - key: cleanup.policy
+        value: compact
+      - key: min.insync.replicas
+        value: 2

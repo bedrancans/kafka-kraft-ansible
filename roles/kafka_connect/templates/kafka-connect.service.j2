@@ -1,0 +1,33 @@
+{{ ansible_managed | comment }}
+
+[Unit]
+Description=Kafka Connect (distributed) {{ kafka_connect_kafka_version }}
+Documentation=https://kafka.apache.org/documentation/#connect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ kafka_connect_user }}
+Group={{ kafka_connect_group }}
+WorkingDirectory={{ kafka_connect_home_dir }}
+EnvironmentFile={{ kafka_connect_config_dir }}/kafka-connect.env
+
+ExecStart={{ kafka_install_dir }}/bin/connect-distributed.sh {{ kafka_connect_config_dir }}/connect-distributed.properties
+
+# A client of the cluster, not part of it: keep retrying while the brokers
+# come up rather than giving up.
+Restart=always
+RestartSec={{ kafka_connect_service_restart_sec }}
+TimeoutStopSec={{ kafka_connect_service_stop_timeout_sec }}
+LimitNOFILE={{ kafka_connect_service_nofile_limit }}
+SuccessExitStatus=143
+
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths={{ kafka_connect_home_dir }} {{ kafka_connect_log_dir }}
+
+[Install]
+WantedBy=multi-user.target

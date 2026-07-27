@@ -21,6 +21,20 @@ kafka_controller_host: "{{ inventory_hostname }}"
 # The address clients outside the cluster connect to
 kafka_external_advertised_host: "localhost"
 
+# --- The Kafka distribution ---
+# Which release this cluster runs. Cluster-wide rather than private to the
+# broker role, because Kafka Connect ships inside the same archive and the two
+# must not drift apart: a Connect worker speaks the cluster's protocol.
+kafka_distribution_version: "4.3.1"
+kafka_distribution_scala_version: "2.13"
+# yamllint disable-line rule:line-length
+kafka_distribution_sha512: "c7d7b2318cb51aa0c61d3246a51c349210073c5c9b754947ef965a439f2f939e8600f204e134a75ac31faf3829c9370960ef7c6a9886c8a1dbf0339a21f4c54c"
+
+# Where the distribution's stable symlink lives on any host that carries it.
+# Three roles need the CLI that ships with it — the broker, kafka_topics and
+# kafka_connect — so the path is cluster-wide rather than broker-private.
+kafka_install_dir: /opt/kafka
+
 # --- Satellite component ports ---
 # These live here rather than inside each component's role because other
 # components need them before those roles exist: the UI renders a Schema

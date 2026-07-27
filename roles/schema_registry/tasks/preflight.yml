@@ -1,4 +1,11 @@
 ---
+# vars/main.yml is loaded automatically, vars/required_topics.yml is not.
+# The properties template reads the replication factor from the declaration
+# so the number is written down once.
+- name: Load this role's topic declaration
+  ansible.builtin.include_vars:
+    file: required_topics.yml
+
 - name: Assert the cluster has brokers to store schemas in
   ansible.builtin.assert:
     that:

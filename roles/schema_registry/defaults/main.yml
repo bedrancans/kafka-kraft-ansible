@@ -45,28 +45,12 @@ schema_registry_bind_address: "0.0.0.0"
 schema_registry_heap_size: "384m"
 
 # ===========================================================================
-# Storage topic — declared here, created by the kafka_topics role
+# Storage topic
 # ===========================================================================
-# Rule 5 of the modularity contract: a component states what it needs on the
-# broker side, it does not reach over and create it. Schema Registry keeps
-# every schema it has ever seen in this topic, so it is compacted rather than
-# retained by time, and it is single-partition because ordering of schema
-# registrations is what makes version numbers meaningful.
-#
-# Today this declaration is documentation plus the source of the replication
-# factor written into schema-registry.properties, and Schema Registry creates
-# the topic on first start. The kafka_topics role in phase 7 consumes these
-# declarations and creates the topic up front instead, which is the difference
-# between a topic whose settings were chosen here and one that happened to
-# come out right.
+# The declaration itself lives in vars/required_topics.yml, where the
+# kafka_topics role reads it. Only the name is repeated here, because
+# schema-registry.properties has to name the topic it stores into.
 schema_registry_topic: _schemas
-schema_registry_required_topics:
-  - name: "{{ schema_registry_topic }}"
-    partitions: 1
-    replication_factor: 3
-    config:
-      cleanup.policy: compact
-      min.insync.replicas: 2
 
 # ===========================================================================
 # Compatibility

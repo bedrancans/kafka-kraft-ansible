@@ -1,0 +1,7 @@
+---
+- name: Collect the declarations
+  ansible.builtin.import_tasks: collect.yml
+
+- name: Ensure the topics exist
+  ansible.builtin.import_tasks: ensure.yml
+  when: kafka_topics_effective | length > 0

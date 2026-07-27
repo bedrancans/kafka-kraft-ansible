@@ -1,0 +1,37 @@
+---
+# Read by the kafka_topics role. A distributed Connect worker keeps all of its
+# state in Kafka, which is what lets a worker be replaced without losing
+# anything — but only if these topics exist with the right settings.
+#
+# configs  : connector configuration. One partition, because Connect relies on
+#            a single ordered log of configuration changes.
+# offsets  : source connector positions. Partitioned for throughput.
+# status   : connector and task state. Read often, small.
+#
+# All three are compacted: Connect wants the latest value per key kept
+# forever, not a window of recent history.
+kafka_connect_required_topics:
+  - name: connect-configs
+    partitions: 1
+    replication_factor: 3
+    config:
+      - key: cleanup.policy
+        value: compact
+      - key: min.insync.replicas
+        value: 2
+  - name: connect-offsets
+    partitions: 25
+    replication_factor: 3
+    config:
+      - key: cleanup.policy
+        value: compact
+      - key: min.insync.replicas
+        value: 2
+  - name: connect-status
+    partitions: 5
+    replication_factor: 3
+    config:
+      - key: cleanup.policy
+        value: compact
+      - key: min.insync.replicas
+        value: 2

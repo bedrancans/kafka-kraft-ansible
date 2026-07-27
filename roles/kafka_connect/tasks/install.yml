@@ -1,0 +1,44 @@
+---
+- name: Create the kafka-connect group
+  ansible.builtin.group:
+    name: "{{ kafka_connect_group }}"
+    system: true
+    state: present
+
+- name: Create the kafka-connect user
+  ansible.builtin.user:
+    name: "{{ kafka_connect_user }}"
+    group: "{{ kafka_connect_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ kafka_connect_home_dir }}"
+    create_home: false
+    state: present
+
+- name: Create the kafka-connect directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ kafka_connect_user }}"
+    group: "{{ kafka_connect_group }}"
+    mode: "0755"
+  loop:
+    - "{{ kafka_connect_config_dir }}"
+    - "{{ kafka_connect_home_dir }}"
+    - "{{ kafka_connect_log_dir }}"
+    - "{{ kafka_connect_plugin_dir }}"
+
+# connect-distributed.sh lives in the Apache Kafka distribution, so the host
+# needs it. Reusing the broker role's install and activate tasks rather than
+# copying them means the worker and the brokers cannot end up on different
+# releases, and the archive is verified by the same checksum either way.
+- name: Install the Kafka distribution for its Connect scripts
+  ansible.builtin.include_role:
+    name: kafka
+    tasks_from: "{{ item }}"
+  loop:
+    - user.yml
+    - install.yml
+    - activate.yml
+  vars:
+    kafka_version: "{{ kafka_connect_kafka_version }}"
