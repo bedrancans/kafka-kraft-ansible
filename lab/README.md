@@ -1,71 +1,71 @@
-# Lab ortamı
+# Lab environment
 
-WSL2 üzerinde, **gerçek VM'lere ne kadar benziyorsa o kadar** benzeyen bir test ortamı.
+A test environment on WSL2 that stays **as close to real VMs as it can get**.
 
-## Neden container "VM gibi"?
+## Why containers that behave like VMs?
 
-Container'ların içinde gerçek `systemd` ve `sshd` çalışır. Ansible bunlara
-`podman exec` ile değil, **SSH ile** bağlanır. Sonuç: roller, template'ler ve
-playbook'lar container'da mı VM'de mi çalıştıklarını bilmez.
+Real `systemd` and `sshd` run inside these containers. Ansible connects over
+**SSH**, not `podman exec`. The result: roles, templates and playbooks have no
+idea whether they are running in a container or on a VM.
 
-Prod'a geçmek için tek yapılan şey inventory değiştirmektir:
+Moving to production is a single change — the inventory:
 
 ```
 inventories/lab/hosts.yml    → 127.0.0.1:2221-2224 (podman)
-inventories/prod/hosts.yml   → gerçek IP'ler:22    (VM)
+inventories/prod/hosts.yml   → real IPs:22         (VMs)
 ```
 
-## Kullanım
+## Usage
 
 ```bash
-./lab/lab-up.sh          # 4 container + network
-make ping                # bağlantı testi
-./lab/lab-down.sh        # container'ları sil
-./lab/lab-down.sh --all  # network ve imajı da sil
+./lab/lab-up.sh          # 4 containers + network
+make ping                # connectivity check
+./lab/lab-down.sh        # remove the containers
+./lab/lab-down.sh --all  # also remove the network and image
 ```
 
-Docker ile çalıştırmak istersen:
+To run it with Docker instead:
 
 ```bash
 CONTAINER_ENGINE=docker ./lab/lab-up.sh
 ```
 
-> Not: docker'da systemd için ek olarak `--privileged --cgroupns=host`
-> gerekebilir. Podman `--systemd=always` ile bunu kendi halleder.
+> Note: Docker additionally needs `--privileged --cgroupns=host` for systemd.
+> Podman handles this on its own via `--systemd=always`.
 
-## Topoloji
+## Topology
 
-| Container | Rol | SSH (WSL) | Diğer portlar |
+| Container | Role | SSH (host) | Other ports |
 |---|---|---|---|
 | `kafka-1` | broker + controller | 2221 | 39091 → 39092 |
 | `kafka-2` | broker + controller | 2222 | 39092 → 39092 |
 | `kafka-3` | broker + controller | 2223 | 39093 → 39092 |
 | `tools-1` | Kafka UI / SR / Connect | 2224 | 8080, 8081, 8083 |
 
-Hepsi `kafka-lab` podman network'ünde. `aardvark-dns` sayesinde container'lar
-birbirini `kafka-1`, `kafka-2` gibi isimlerle çözer — `advertised.listeners`
-bu isimleri kullanır.
+All of them share the `kafka-lab` podman network. Thanks to `aardvark-dns`
+the containers resolve each other as `kafka-1`, `kafka-2` and so on —
+`advertised.listeners` relies on those names.
 
-## Listener'lar
+## Listeners
 
-| Listener | Bind | Advertised | Kim kullanır |
+| Listener | Bind | Advertised | Consumers |
 |---|---|---|---|
-| `INTERNAL` | `:9092` | `kafka-N:9092` | broker'lar arası, UI, SR, Connect |
-| `EXTERNAL` | `:39092` | `localhost:3909N` | WSL host'undan bağlanan client'lar |
-| `CONTROLLER` | `:9093` | — | KRaft quorum (dışarı açılmaz) |
+| `INTERNAL` | `:9092` | `kafka-N:9092` | brokers, UI, SR, Connect |
+| `EXTERNAL` | `:39092` | `localhost:3909N` | clients on the host |
+| `CONTROLLER` | `:9093` | — | KRaft quorum (never exposed) |
 
-## Elle bağlanma
+## Connecting manually
 
 ```bash
 ssh -i ~/.ssh/kafka_lab -p 2221 ansible@127.0.0.1
 ```
 
-## Bilinen sınırlar
+## Known limitations
 
-- **RAM:** WSL'e ayrılan bellek 7 GB civarında. `kafka_heap_size: 512m`
-  (bkz. `inventories/lab/group_vars/all/profile.yml`) bu yüzden.
-- **OS tuning kapalı:** `kafka_tune_os: false`. `sysctl` ve THP ayarları
-  container'da ya işe yaramaz ya da WSL host çekirdeğini etkiler.
-  Prod inventory'sinde `true`.
-- SSH host anahtarları imaja gömülüdür, tüm node'larda aynıdır.
-  Lab için kabul edilebilir; `host_key_checking` zaten kapalı.
+- **RAM:** WSL gets around 7 GB, which is why
+  `kafka_heap_size: 512m` (see `inventories/lab/group_vars/all/profile.yml`).
+- **OS tuning is off:** `kafka_tune_os: false`. Inside a container `sysctl`
+  and THP settings are either no-ops or they leak into the host kernel.
+  The production inventory sets it to `true`.
+- SSH host keys are baked into the image and shared by every node.
+  Acceptable for a lab; `host_key_checking` is disabled anyway.

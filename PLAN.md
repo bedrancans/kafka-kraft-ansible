@@ -1,66 +1,67 @@
-# kafka-kraft-ansible — Uygulama Planı
+# kafka-kraft-ansible — Implementation plan
 
-3 broker'lı KRaft modunda Apache Kafka cluster'ını Ansible ile kurmak, üzerine
-Kafka UI eklemek ve sonradan Schema Registry / Kafka Connect gibi bileşenleri
-**cluster'ı durdurmadan** ekleyebilmek.
+Deploy a three-broker Apache Kafka cluster in KRaft mode with Ansible, add
+Kafka UI on top of it, and be able to add components such as Schema Registry
+and Kafka Connect later **without stopping the cluster**.
 
-Lab ortamı WSL2 + podman; ancak kurulumun tamamı gerçek VM'lerde çalışacak
-şekilde tasarlanır. Lab ile prod arasındaki tek fark inventory dosyasıdır.
+The lab runs on WSL2 + podman, but the whole deployment is designed to run on
+real VMs. The only difference between lab and production is the inventory.
 
 ---
 
-## 0. Sabitlenen kararlar
+## 0. Decisions
 
-| Konu | Karar | Gerekçe |
+| Topic | Decision | Rationale |
 |---|---|---|
-| Kafka sürümü | 4.x (kesin sürüm Faz 2 başında pinlenir) | KRaft-only, ZooKeeper yok |
-| Topoloji | 3 node, `process.roles=broker,controller` (combined) | 3 node için standart; rol `isolated`'ı da destekler |
-| Kurulum yöntemi | tarball + systemd (tüm bileşenler) | container-in-container'dan kaçınmak, tek tutarlı model |
-| Java | OpenJDK 21 (`openjdk-21-jre-headless`, apt) | Kafka 4.x broker'ı Java 17+ ister |
-| Lab motoru | podman 4.9 + netavark/aardvark-dns | kurulu, rootless, systemd container'da sorunsuz |
-| Bağlantı | SSH (container'lara da SSH ile) | rollerin VM/container farkını görmemesi için |
-| Güvenlik | Faz 1–7 PLAINTEXT, Faz 8'de SASL/SCRAM + TLS | önce çalışan cluster, sonra sertleştirme |
-| Quorum | statik `controller.quorum.voters` | daha az sürpriz; dinamik quorum ADR olarak yazılır |
+| Kafka version | 4.x (exact version pinned at the start of phase 2) | KRaft-only, no ZooKeeper |
+| Topology | 3 nodes, `process.roles=broker,controller` (combined) | standard for three nodes; the role also supports `isolated` |
+| Install method | tarball + systemd for every component | avoids containers inside containers, one consistent model |
+| Java | OpenJDK 21 (`openjdk-21-jre-headless`, apt) | Kafka 4.x brokers require Java 17+ |
+| Lab engine | podman 4.9 + netavark/aardvark-dns | already installed, rootless, systemd works cleanly |
+| Connection | SSH, including to the containers | so roles cannot tell VMs and containers apart |
+| Security | PLAINTEXT through phase 7, SASL/SCRAM + TLS in phase 8 | working cluster first, hardening second |
+| Quorum | static `controller.quorum.voters` | fewer surprises; dynamic quorum is captured as an ADR |
 
-### Bileşenler ve kurulum biçimi
+### Components and how they are installed
 
-| Bileşen | Kaynak | Servis |
+| Component | Source | Service |
 |---|---|---|
 | Kafka broker + controller | Apache Kafka tarball | `kafka.service` |
-| Kafka Connect | **aynı tarball** (`connect-distributed.sh`) | `kafka-connect.service` |
+| Kafka Connect | **the same tarball** (`connect-distributed.sh`) | `kafka-connect.service` |
 | Schema Registry | Confluent Community tarball | `schema-registry.service` |
-| Kafka UI | kafbat/kafka-ui jar (provectus arşivlendi) | `kafka-ui.service` |
+| Kafka UI | kafbat/kafka-ui jar (provectus is archived) | `kafka-ui.service` |
 
 ---
 
-## 1. Lab port ve isim haritası
+## 1. Lab port and name map
 
-Podman network: `kafka-lab` (aardvark-dns sayesinde container adları hostname olarak çözülür).
+Podman network: `kafka-lab` (aardvark-dns resolves container names as hostnames).
 
-| Container | Hostname | SSH (WSL) | EXTERNAL Kafka | Servis portu |
+| Container | Hostname | SSH (host) | EXTERNAL Kafka | Service ports |
 |---|---|---|---|---|
-| kafka-1 | `kafka-1` | 2221 | 39091 → 39092 | 9092 / 9093 (iç) |
-| kafka-2 | `kafka-2` | 2222 | 39092 → 39092 | 9092 / 9093 (iç) |
-| kafka-3 | `kafka-3` | 2223 | 39093 → 39092 | 9092 / 9093 (iç) |
+| kafka-1 | `kafka-1` | 2221 | 39091 → 39092 | 9092 / 9093 (internal) |
+| kafka-2 | `kafka-2` | 2222 | 39092 → 39092 | 9092 / 9093 (internal) |
+| kafka-3 | `kafka-3` | 2223 | 39093 → 39092 | 9092 / 9093 (internal) |
 | tools-1 | `tools-1` | 2224 | — | UI 8080, SR 8081, Connect 8083 |
 
-### Listener tasarımı (baştan üç listener)
+### Listener design (three listeners from day one)
 
-| Listener | Bind | Advertised | Kim kullanır |
+| Listener | Bind | Advertised | Consumers |
 |---|---|---|---|
-| `INTERNAL` | `:9092` | `kafka-N:9092` | broker'lar arası, UI, SR, Connect |
-| `EXTERNAL` | `:39092` | `localhost:3909N` | WSL host'undan bağlanan client'lar |
-| `CONTROLLER` | `:9093` | — | KRaft quorum, dışarı açılmaz |
+| `INTERNAL` | `:9092` | `kafka-N:9092` | brokers, UI, SR, Connect |
+| `EXTERNAL` | `:39092` | `localhost:3909N` | clients on the host |
+| `CONTROLLER` | `:9093` | — | KRaft quorum, never exposed |
 
-Prod'a geçişte aynı yapı `INTERNAL=private-ip` / `EXTERNAL=public-ip` olarak devam eder.
+On production the same structure becomes `INTERNAL=private-ip` /
+`EXTERNAL=public-ip`.
 
 ---
 
-## 2. Repo yapısı
+## 2. Repository layout
 
 ```
 kafka-kraft-ansible/
-├── README.md  PLAN.md  LICENSE  CONTRIBUTING.md  Makefile  .gitignore
+├── README.md  README.tr.md  PLAN.md  LICENSE  CONTRIBUTING.md  Makefile  .gitignore
 ├── ansible.cfg
 ├── requirements.yml
 ├── lab/
@@ -74,12 +75,12 @@ kafka-kraft-ansible/
 │   │       ├── all/{cluster.yml, profile.yml}
 │   │       ├── kafka_brokers/{main.yml, cluster_id.yml}
 │   │       └── kafka_ui/main.yml
-│   └── prod.example/            # gerçek VM şablonu
+│   └── prod.example/            # template for real VMs
 ├── playbooks/
 │   ├── site.yml  verify.yml  rolling-restart.yml  upgrade.yml  teardown.yml
 ├── roles/
 │   ├── common/  java/
-│   ├── kafka_kraft/             # ★ ana rol
+│   ├── kafka_kraft/             # ★ the main role
 │   ├── kafka_topics/
 │   ├── kafka_ui/
 │   ├── schema_registry/
@@ -91,118 +92,131 @@ kafka-kraft-ansible/
 
 ---
 
-## 3. Faz Faz Uygulama
+## 3. Phases
 
-Her fazın sonunda **Definition of Done (DoD)** var; sağlanmadan sonraki faza geçilmez.
-Her faz sonunda commit + faz sonlarında git tag.
+Every phase has a **Definition of Done**; the next phase does not start until
+it is met. Commit at the end of every phase, tag at the end of each milestone.
 
 ---
 
-### FAZ 0 — Lab altyapısı ve araçlar
+### PHASE 0 — Lab infrastructure and tooling ✅
 
-**Adımlar**
+**Steps**
 
-1. WSL araçları:
+1. Host tooling:
    ```bash
-   sudo apt update && sudo apt install -y podman openssh-client make uidmap
+   sudo apt install -y podman openssh-client make uidmap gh
    pipx install --include-deps ansible
-   pipx inject ansible ansible-lint yamllint
+   pipx install ansible-lint
+   pipx install yamllint
    ```
-2. Git init + `.gitignore` (`*.retry`, `.vault_pass`, `*.tar.gz`, `.venv/`).
-3. `lab/Containerfile`: `ubuntu:24.04` üzerine `systemd systemd-sysv openssh-server
-   python3 sudo iproute2 curl ca-certificates`; `ansible` kullanıcısı + NOPASSWD sudo +
-   `authorized_keys`; gereksiz systemd unit'lerinin maskelenmesi; `STOPSIGNAL SIGRTMIN+3`;
-   `CMD ["/sbin/init"]`.
-4. SSH anahtarı: `ssh-keygen -t ed25519 -f ~/.ssh/kafka_lab -N ''`.
+2. `git init` + `.gitignore` (`*.retry`, `.vault_pass`, `*.tar.gz`, `.venv/`).
+3. `lab/Containerfile`: `ubuntu:24.04` plus `systemd systemd-sysv dbus
+   openssh-server python3 sudo iproute2 curl ca-certificates`; an `ansible`
+   user with passwordless sudo and `authorized_keys`; container-irrelevant
+   systemd units masked; `STOPSIGNAL SIGRTMIN+3`; `CMD ["/sbin/init"]`.
+4. SSH key: `ssh-keygen -t ed25519 -f ~/.ssh/kafka_lab -N ''`.
 5. `lab/lab-up.sh`:
-   - `podman network create kafka-lab` (varsa geç)
-   - imajı build et
-   - 4 container'ı `--systemd=always --network kafka-lab --hostname <ad>` ile başlat,
-     port haritasını yukarıdaki tabloya göre publish et
-   - `CONTAINER_ENGINE=${CONTAINER_ENGINE:-podman}` değişkeni ile docker'a da açık bırak
-6. `ansible.cfg` (inventory yolu, `host_key_checking=False`, `pipelining=True`).
-7. `inventories/lab/hosts.yml`: `kafka_brokers` (3), `kafka_controllers` (aynı 3),
-   `kafka_ui` (tools-1) grupları; `ansible_host=127.0.0.1`, `ansible_port=222N`.
+   - create the `kafka-lab` network if missing
+   - build the image
+   - start four containers with `--systemd=always --network kafka-lab
+     --hostname <name>` and publish the ports from the table above
+   - keep `CONTAINER_ENGINE=${CONTAINER_ENGINE:-podman}` so Docker also works
+6. `ansible.cfg` (inventory path, `host_key_checking=False`, `pipelining=True`).
+7. `inventories/lab/hosts.yml`: groups `kafka_brokers` (3),
+   `kafka_controllers` (the same 3), `kafka_ui` (tools-1);
+   `ansible_host=127.0.0.1`, `ansible_port=222N`.
 
 **DoD**
-- `./lab/lab-up.sh` 4 container'ı ayağa kaldırıyor
-- `ansible -i inventories/lab all -m ping` → 4 node SUCCESS
-- `podman exec kafka-1 systemctl is-system-running` → `running` / `degraded` (crash değil)
-- kafka-1 içinden `getent hosts kafka-2` çözüyor (aardvark-dns doğrulaması)
+- `./lab/lab-up.sh` brings up four containers ✅
+- `ansible -i inventories/lab all -m ping` → 4 nodes SUCCESS ✅
+- `systemctl is-system-running` returns `running`, as an unprivileged user too ✅
+- `getent hosts kafka-2` resolves from kafka-1 (aardvark-dns check) ✅
 
-**Riskler:** rootless podman'de systemd; çözülmezse `--privileged` fallback'i lab README'ye not düşülür.
+**Lesson learned:** without the `dbus` package `systemctl` only works as root,
+because it falls back to systemd's private socket. A real VM always has a
+system bus, so the lab image must install `dbus` too.
 
 ---
 
-### FAZ 1 — `common` + `java` rolleri
+### PHASE 1 — `common` and `java` roles
 
-**Adımlar**
+**Steps**
 
-1. `roles/common`: `kafka` user/group (nologin), `/opt`, `/var/lib/kafka`, `/var/log/kafka`
-   dizinleri, `LimitNOFILE` için limits dosyası.
-2. **OS tuning'i bayrağa bağla:** `kafka_tune_os` (prod'da `true`, lab'da `false`).
-   `vm.swappiness`, `vm.max_map_count`, THP kapatma gibi task'lar container'da ya no-op
-   ya da host'u etkiler — lab'da atlanmalı. Bu ayrım `docs/`'ta açıkça anlatılır.
-3. `roles/java`: `openjdk-21-jre-headless`, `JAVA_HOME` tespiti ve fact olarak set.
-4. `playbooks/site.yml` iskeleti (tag'li, grup bazlı play'ler).
+1. `roles/common`: `kafka` user and group (nologin), `/opt`, `/var/lib/kafka`
+   and `/var/log/kafka` directories, a limits file for `LimitNOFILE`.
+2. **Put OS tuning behind a flag:** `kafka_tune_os` (`true` in production,
+   `false` in the lab). Tasks such as `vm.swappiness`, `vm.max_map_count` and
+   disabling THP are either no-ops in a container or they leak into the host
+   kernel, so they must be skipped in the lab. The distinction is documented.
+3. `roles/java`: `openjdk-21-jre-headless`, detect `JAVA_HOME` and set it as a
+   fact.
+4. Skeleton of `playbooks/site.yml` (tagged, group-scoped plays).
 
 **DoD**
-- `ansible-playbook -i inventories/lab playbooks/site.yml --tags common,java` başarılı
-- **İkinci çalıştırmada `changed=0`** (idempotency)
-- `ansible all -a 'java -version'` 21 döndürüyor
+- `ansible-playbook -i inventories/lab playbooks/site.yml --tags common,java`
+  succeeds
+- the **second run reports `changed=0`** (idempotency)
+- `ansible all -a 'java -version'` reports 21
 
 ---
 
-### FAZ 2 — `kafka_kraft` rolü → çalışan cluster ★
+### PHASE 2 — `kafka_kraft` role → a working cluster ★
 
-**Adımlar (bu sırayla)**
+**Steps, in this order**
 
-1. **Sürüm pinle:** Apache Kafka indirme sayfasından tam sürüm + SHA512'yi al,
-   `defaults/main.yml`'ye yaz. Sürüme ait `kafka-storage.sh format` sözdizimini
-   o sürümün kendi dökümanından doğrula (minor'lar arası değişebiliyor).
-2. `defaults/main.yml`: tüm tunable'lar yorumlu (bu dosya `docs/04`'ün kaynağı).
-3. `tasks/preflight.yml`: `node_id` benzersizliği, RAM/disk eşiği, node'ların
-   birbirini DNS ile çözmesi → `assert`.
-4. `tasks/install.yml`: `get_url` + **checksum doğrulama**, `/opt/kafka-<ver>` altına aç,
-   `/opt/kafka` symlink. (Symlink = upgrade/rollback tek adım.)
-5. `templates/server.properties.j2`: 3 listener, `listener.security.protocol.map`,
-   `inter.broker.listener.name=INTERNAL`, `controller.listener.names=CONTROLLER`,
-   quorum voters Jinja döngüsüyle inventory'den:
+1. **Pin the version:** take the exact version and its SHA512 from the Apache
+   Kafka download page and write them into `defaults/main.yml`. Verify the
+   `kafka-storage.sh format` syntax against that version's own documentation —
+   it has changed between minor releases.
+2. `defaults/main.yml`: every tunable, commented (this file is the source for
+   `docs/04`).
+3. `tasks/preflight.yml`: assert unique `node_id`s, RAM and disk thresholds,
+   and that every node resolves the others over DNS.
+4. `tasks/install.yml`: `get_url` with **checksum verification**, unpack into
+   `/opt/kafka-<version>`, symlink `/opt/kafka`. (The symlink makes upgrade and
+   rollback a single step.)
+5. `templates/server.properties.j2`: three listeners,
+   `listener.security.protocol.map`, `inter.broker.listener.name=INTERNAL`,
+   `controller.listener.names=CONTROLLER`, and quorum voters derived from the
+   inventory:
    ```jinja
    controller.quorum.voters={% for h in groups['kafka_controllers'] -%}
    {{ hostvars[h].kafka_node_id }}@{{ hostvars[h].kafka_controller_host }}:{{ kafka_controller_port }}
    {{- "," if not loop.last }}{%- endfor %}
    ```
-   Replikasyon: `default.replication.factor=3`, `min.insync.replicas=2`,
-   `offsets.topic.replication.factor=3`, `transaction.state.log.replication.factor=3`.
-6. **Cluster ID:** bir kez üretilir (`kafka-storage.sh random-uuid`),
-   `group_vars/kafka_brokers/cluster_id.yml`'ye yazılır (lab'da düz, prod'da vault).
-   Makefile'a `make cluster-id` hedefi.
-7. `tasks/format.yml`: `stat` ile `log.dirs/meta.properties` kontrolü →
-   **yoksa** format et. Bu koşul olmadan re-run veriyi siler.
-8. `templates/kafka.service.j2` + `kafka-env` (heap profil değişkeninden:
-   lab `512m`, prod `6g`), `Restart=on-failure`, `TimeoutStopSec=180`, `LimitNOFILE`.
+   Replication: `default.replication.factor=3`, `min.insync.replicas=2`,
+   `offsets.topic.replication.factor=3`,
+   `transaction.state.log.replication.factor=3`.
+6. **Cluster ID:** generated once (`kafka-storage.sh random-uuid`) and written
+   to `group_vars/kafka_brokers/cluster_id.yml` (plain in the lab, vaulted in
+   production). A `make cluster-id` target prints a fresh one.
+7. `tasks/format.yml`: `stat` `log.dirs/meta.properties` and format only when
+   it is **missing**. Without that guard, a re-run wipes the data.
+8. `templates/kafka.service.j2` plus `kafka-env` (heap comes from the profile
+   variable: `512m` in the lab, `6g` in production), `Restart=on-failure`,
+   `TimeoutStopSec=180`, `LimitNOFILE`.
 9. `handlers/main.yml`: `restart kafka`.
-10. `tasks/verify.yml`: 9092/9093 portları, `kafka-metadata-quorum.sh --describe`
-    → 3 voter + 1 leader.
+10. `tasks/verify.yml`: ports 9092/9093, then
+    `kafka-metadata-quorum.sh --describe` showing three voters and a leader.
 
 **DoD**
-- `ansible-playbook site.yml --tags kafka` → 3 broker `active (running)`
-- `kafka-metadata-quorum.sh --describe` → LeaderId dolu, 3 voter
-- `--replication-factor 3` topic oluşuyor, produce/consume çalışıyor
-- WSL host'undan `localhost:39091` ile bağlanılabiliyor (EXTERNAL listener testi)
-- İkinci çalıştırmada `changed=0`, **format task'ı skipped**
+- `ansible-playbook site.yml --tags kafka` → three brokers `active (running)`
+- `kafka-metadata-quorum.sh --describe` → LeaderId set, three voters
+- a `--replication-factor 3` topic is created, produce and consume work
+- the host can reach `localhost:39091` (EXTERNAL listener check)
+- the second run reports `changed=0` and the **format task is skipped**
 
 → `git tag v0.1.0`
 
 ---
 
-### FAZ 3 — `kafka_ui` rolü + dinamiklik kanıtı
+### PHASE 3 — `kafka_ui` role and the modularity payoff
 
-**Adımlar**
+**Steps**
 
-1. kafbat/kafka-ui jar release'ini indir (`get_url` + checksum), `/opt/kafka-ui`.
-2. `kafka-ui.service` + env dosyası — **koşullu template**:
+1. Download the kafbat/kafka-ui jar (`get_url` + checksum) into `/opt/kafka-ui`.
+2. `kafka-ui.service` plus an env file rendered **conditionally**:
    ```jinja
    KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS={{ kafka_bootstrap_servers }}
    {% if groups['schema_registry'] | default([]) | length > 0 %}
@@ -212,156 +226,170 @@ Her faz sonunda commit + faz sonlarında git tag.
    KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS=http://{{ ... }}:8083
    {% endif %}
    ```
-3. `group_vars/all/cluster.yml` içinde türetilmiş değişken:
+3. The derived variable in `group_vars/all/cluster.yml`:
    ```yaml
    kafka_bootstrap_servers: "{{ groups['kafka_brokers']
      | map('extract', hostvars, 'kafka_internal_host')
      | map('regex_replace', '$', ':' ~ kafka_internal_port) | join(',') }}"
    ```
-4. `playbooks/verify.yml`: uçtan uca smoke test (topic → produce → consume → temizlik).
+4. `playbooks/verify.yml`: end-to-end smoke test
+   (create topic → produce → consume → clean up).
 
 **DoD**
-- Tarayıcıdan `http://localhost:8080` → 3 broker ve topic'ler görünüyor
-- `--tags kafka_ui` çalıştırınca broker'lara **hiç task gitmiyor** (downtime 0)
+- `http://localhost:8080` shows three brokers and the topics
+- running `--tags kafka_ui` sends **no tasks to the brokers** (zero downtime)
 
 → `git tag v0.2.0`
 
 ---
 
-### FAZ 4 — Test ve CI
+### PHASE 4 — Testing and CI
 
-**Adımlar**
+**Steps**
 
-1. `molecule/default/` — podman driver, aynı `lab/Containerfile`, 3 node senaryosu.
-2. `molecule.yml` + `converge.yml` + `verify.yml` (Faz 2 doğrulamalarının aynısı).
+1. `molecule/default/` — podman driver, the same `lab/Containerfile`,
+   a three-node scenario.
+2. `molecule.yml` + `converge.yml` + `verify.yml` (the phase 2 checks).
 3. `.github/workflows/ci.yml`: `yamllint` → `ansible-lint` → `molecule test`
-   (idempotency dahil, molecule bunu otomatik ölçer).
-4. README'ye CI badge.
+   (molecule measures idempotency automatically).
+4. Add the CI badge to the README.
 
 **DoD**
-- `molecule test` lokalde yeşil
-- GitHub Actions'ta yeşil badge
+- `molecule test` is green locally
+- the GitHub Actions badge is green
 
 → `git tag v0.3.0`
 
 ---
 
-### FAZ 5 — Operasyonel playbook'lar
+### PHASE 5 — Operational playbooks
 
-**Adımlar**
+**Steps**
 
-1. `rolling-restart.yml`: `serial: 1` → stop → start → port bekle →
-   `kafka-topics.sh --describe --under-replicated-partitions` boş dönene kadar
-   `retries/until` → sonraki node.
-2. `upgrade.yml`: yeni sürümü indir → symlink değiştir → rolling restart → doğrula.
-3. `docs/05-operations.md` runbook'ları: broker değiştirme, disk dolması, log temizliği.
+1. `rolling-restart.yml`: `serial: 1` → stop → start → wait for the port →
+   `retries/until` on
+   `kafka-topics.sh --describe --under-replicated-partitions` returning empty →
+   next node.
+2. `upgrade.yml`: download the new version → flip the symlink → rolling restart
+   → verify.
+3. Runbooks in `docs/05-operations.md`: replacing a broker, a full disk,
+   log cleanup.
 
 **DoD**
-- Rolling restart sırasında sürekli çalışan bir producer **mesaj kaybetmiyor**
-- Bir broker `stop` edildiğinde cluster yazmaya devam ediyor (`min.insync.replicas=2` testi)
+- a producer running throughout a rolling restart **loses no messages**
+- the cluster keeps accepting writes while one broker is stopped
+  (the `min.insync.replicas=2` check)
 
 → `git tag v0.4.0`
 
 ---
 
-### FAZ 6 — `schema_registry` ile modülerliğin kanıtı ★
+### PHASE 6 — `schema_registry`, the proof of modularity ★
 
-Bu faz projenin ana iddiasını ispatlar: **çalışan cluster'a sıfır kesintiyle bileşen ekleme.**
+This phase proves the central claim: **adding a component to a running cluster
+with zero downtime.**
 
-**Adımlar**
-
-1. `roles/schema_registry` (Confluent Community tarball + systemd), `_schemas` topic'i
-   `kafka_topics` rolü üzerinden deklaratif olarak bildirilir.
-2. `inventories/lab/hosts.yml`'ye `schema_registry` grubu + `tools-1` eklenir.
+1. `roles/schema_registry` (Confluent Community tarball + systemd); the
+   `_schemas` topic is declared and created through the `kafka_topics` role.
+2. Add the `schema_registry` group and `tools-1` to
+   `inventories/lab/hosts.yml`.
 3. ```bash
    ansible-playbook -i inventories/lab playbooks/site.yml --tags schema_registry
    ansible-playbook -i inventories/lab playbooks/site.yml --tags kafka_ui
    ```
-4. `docs/09-extending.md` bu akışı adım adım anlatır.
+4. `docs/09-extending.md` walks through the flow.
 
 **DoD**
-- SR ayağa kalkıyor, şema register/get çalışıyor
-- Kafka UI'da **Schema Registry sekmesi kendiliğinden** beliriyor
-- Broker'lara tek bir task gitmedi — `site.yml` çıktısıyla kanıtlanır
+- Schema Registry comes up, register and get work
+- the Schema Registry tab **appears in Kafka UI on its own**
+- not a single task ran against the brokers — shown by the `site.yml` output
 
 → `git tag v0.5.0`
 
 ---
 
-### FAZ 7 — `kafka_connect` + `kafka_topics`
+### PHASE 7 — `kafka_connect` and `kafka_topics`
 
-**Adımlar**
+**Steps**
 
-1. `roles/kafka_connect`: Apache Kafka tarball'ındaki `connect-distributed.sh`,
-   ayrı systemd unit, `plugin.path` yönetimi.
-2. `connect-configs` / `connect-offsets` / `connect-status` topic'leri
-   `kafka_topics` rolüyle (RF=3, compact) önceden oluşturulur.
-3. Örnek connector (FileStream veya Datagen) ile uçtan uca demo.
+1. `roles/kafka_connect`: `connect-distributed.sh` from the Apache Kafka
+   tarball, its own systemd unit, managed `plugin.path`.
+2. `connect-configs`, `connect-offsets` and `connect-status` topics created up
+   front by the `kafka_topics` role (RF=3, compacted).
+3. An end-to-end demo with an example connector (FileStream or Datagen).
 
 **DoD**
-- Connect REST `:8083` cevap veriyor, connector çalışıyor
-- Kafka UI'da Connect sekmesi görünüyor
+- the Connect REST API answers on `:8083` and a connector runs
+- the Connect tab shows up in Kafka UI
 
 → `git tag v0.6.0`
 
 ---
 
-### FAZ 8 — Güvenlik
+### PHASE 8 — Security
 
-**Adımlar**
+**Steps**
 
-1. TLS: CA + broker sertifikaları üretimi (`openssl`/`keytool`), keystore/truststore dağıtımı.
-2. SASL/SCRAM-SHA-512: kullanıcı oluşturma, JAAS, `sasl.enabled.mechanisms`.
-3. Listener'ları `SASL_SSL`'e çevir → **planlı rolling restart** (Faz 5 playbook'u kullanılır).
-4. ACL'ler + UI/SR/Connect için servis kullanıcıları.
-5. `ansible-vault` ile parolalar.
+1. TLS: generate a CA and broker certificates (`openssl`/`keytool`), distribute
+   keystores and truststores.
+2. SASL/SCRAM-SHA-512: create users, JAAS config, `sasl.enabled.mechanisms`.
+3. Switch the listeners to `SASL_SSL` through a **planned rolling restart**
+   (using the phase 5 playbook).
+4. ACLs plus service users for UI, Schema Registry and Connect.
+5. Passwords under `ansible-vault`.
 
 **DoD**
-- Kimlik doğrulamasız client reddediliyor
-- Tüm bileşenler SASL_SSL üzerinden çalışıyor
-- Geçiş rolling restart ile, sıfır veri kaybıyla yapıldı
+- unauthenticated clients are rejected
+- every component talks over SASL_SSL
+- the migration ran as a rolling restart with no data loss
 
 → `git tag v0.7.0`
 
 ---
 
-### FAZ 9 — Dökümantasyon ve yayın
+### PHASE 9 — Documentation and release
 
-| Dosya | İçerik |
+| File | Contents |
 |---|---|
-| `README.md` | Ne yapar, mermaid mimari diyagramı, 5 dakikalık quickstart, UI ekran görüntüsü, CI badge |
-| `docs/01-architecture.md` | KRaft, topoloji, listener matrisi, port tablosu |
-| `docs/02-prerequisites.md` | OS, Java, disk/RAM/ağ, lab vs prod farkı |
-| `docs/03-installation.md` | Adım adım, inventory doldurma |
-| `docs/04-configuration-reference.md` | `defaults/main.yml`'deki her değişken |
-| `docs/05-operations.md` | Runbook'lar |
-| `docs/06-security.md` | TLS/SASL/ACL |
-| `docs/07-monitoring.md` | JMX, izlenecek 10 metrik, alarm eşikleri |
-| `docs/08-troubleshooting.md` | Belirti / sebep / çözüm tablosu |
-| `docs/09-extending.md` | Yeni bileşen ekleme akışı |
-| `docs/adr/` | Neden KRaft, neden combined, neden container-as-VM lab, neden statik quorum |
-| `CONTRIBUTING.md` | Modülerlik sözleşmesinin 5 kuralı |
+| `README.md` | what it does, mermaid architecture diagram, five-minute quick start, UI screenshot, CI badge |
+| `docs/01-architecture.md` | KRaft, topology, listener matrix, port table |
+| `docs/02-prerequisites.md` | OS, Java, disk/RAM/network, lab vs production |
+| `docs/03-installation.md` | step by step, filling in the inventory |
+| `docs/04-configuration-reference.md` | every variable in `defaults/main.yml` |
+| `docs/05-operations.md` | runbooks |
+| `docs/06-security.md` | TLS, SASL, ACLs |
+| `docs/07-monitoring.md` | JMX, the ten metrics to watch, alert thresholds |
+| `docs/08-troubleshooting.md` | symptom / cause / fix table |
+| `docs/09-extending.md` | how to add a new component |
+| `docs/adr/` | why KRaft, why combined mode, why containers-as-VMs, why a static quorum |
+| `CONTRIBUTING.md` | the five rules of the modularity contract |
 
 → `git tag v1.0.0`
 
 ---
 
-## 4. Modülerlik sözleşmesi (CONTRIBUTING.md'ye girecek)
+## 4. The modularity contract
 
-1. Bir bileşen = bir rol = bir inventory grubu. Yeni bileşen, mevcut rollerin içine dokunmayı gerektirmez.
-2. Hiçbir rol adres hardcode etmez; her şey inventory'den türetilir.
-3. Broker'a yalnızca `kafka_kraft` rolü dokunur. Uydu rolleri broker restart edemez.
-4. Her rolün 4 zorunlusu: yorumlu `defaults/main.yml`, `verify.yml`, molecule senaryosu, `docs/` sayfası.
-5. Broker tarafı ihtiyaçları (topic, ACL) bileşen tarafından bildirilir, ortak `kafka_topics` rolü uygular.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full text.
+
+1. One component = one role = one inventory group.
+2. No role hardcodes an address; everything is derived from the inventory.
+3. Only `kafka_kraft` touches the brokers; satellite roles never restart them.
+4. Every role ships: a commented `defaults/main.yml`, `verify.yml`, a molecule
+   scenario, and a `docs/` page.
+5. Broker-side needs (topics, ACLs) are declared by the component and applied
+   by the shared `kafka_topics` role.
 
 ---
 
-## 5. Bilinen tuzaklar (docs/08'in çekirdeği)
+## 5. Known pitfalls (the core of docs/08)
 
-- `advertised.listeners` yanlış → client bağlanamaz (lab'da EXTERNAL mutlaka `localhost:3909N`)
-- `controller.quorum.voters` node'lar arası farklı → quorum kurulmaz
-- Storage'ın yanlışlıkla yeniden formatlanması → tüm metadata gider
-- `min.insync.replicas=2` + `acks=all`: tek broker düşünce yazma durur (bilinçli tercih)
-- Lab'da `sysctl`/THP task'larının host'u etkilemesi → `kafka_tune_os: false`
-- Heap'i şişirmek → GC duraklamaları; page cache'e yer bırak
-- WSL RAM'i 7 GB: lab profilinde broker heap 512m
+- Wrong `advertised.listeners` → clients cannot connect (in the lab EXTERNAL
+  must advertise `localhost:3909N`)
+- `controller.quorum.voters` differing between nodes → the quorum never forms
+- Accidentally reformatting storage → all metadata is lost
+- `min.insync.replicas=2` with `acks=all`: writes stop when a single broker is
+  down — a deliberate trade-off
+- `sysctl`/THP tasks leaking into the host in the lab → `kafka_tune_os: false`
+- Oversized heaps → GC pauses; leave room for the page cache
+- WSL has 7 GB of RAM: the lab profile uses a 512m broker heap

@@ -15,7 +15,7 @@ rules:
     check-keys: false
   comments:
     min-spaces-from-content: 1
-  # ansible-lint bu kuralın kapalı olmasını şart koşuyor
+  # ansible-lint requires this rule to be disabled
   comments-indentation: false
   braces:
     max-spaces-inside: 1

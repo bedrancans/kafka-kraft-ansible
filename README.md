@@ -1,86 +1,93 @@
 # kafka-kraft-ansible
 
-Ansible ile **3 broker'lı, KRaft modunda Apache Kafka** cluster'ı — üzerine
-Kafka UI, Schema Registry ve Kafka Connect'i *cluster'ı durdurmadan* ekleyebilen
-modüler bir yapı.
+A three-broker **Apache Kafka cluster in KRaft mode, deployed with Ansible** —
+plus a modular layout that lets you add Kafka UI, Schema Registry and Kafka
+Connect *without taking the cluster down*.
 
-> **Durum:** yapım aşamasında. Yol haritası ve kabul kriterleri için [PLAN.md](PLAN.md).
+🇹🇷 [Türkçe README](README.tr.md)
 
-## Neden bu repo?
+> **Status:** work in progress. See [PLAN.md](PLAN.md) for the roadmap and the
+> acceptance criteria of each phase.
 
-Çoğu Kafka kurulum örneği tek seferlik bir `docker-compose up` gösterir.
-Burada amaç farklı:
+## Why this repo?
 
-- **Gerçek VM'lerde çalışacak kurulum** — tarball + systemd, container sarmalayıcı yok
-- **Modülerlik kanıtlanır, iddia edilmez** — Schema Registry çalışan cluster'a
-  sıfır broker downtime'ıyla eklenir ve bu test edilir
-- **Idempotency kabul kriteridir** — playbook ikinci kez çalıştığında `changed=0`
-- **İşletme dahil** — rolling restart, upgrade ve troubleshooting runbook'ları
+Most Kafka examples show a one-shot `docker-compose up`. The goal here is
+different:
 
-## Mimari
+- **A deployment that runs on real VMs** — tarballs and systemd, no container
+  wrapper around Kafka itself
+- **Modularity is proven, not claimed** — Schema Registry is added to a running
+  cluster with zero broker downtime, and that is tested
+- **Idempotency is an acceptance criterion** — the second run must report
+  `changed=0`
+- **Operations included** — rolling restart, upgrade and troubleshooting
+  runbooks
+
+## Architecture
 
 ```
 kafka-1 ┐
 kafka-2 ├── process.roles = broker,controller   (KRaft combined mode)
 kafka-3 ┘
-tools-1 ─── Kafka UI (+ ileride Schema Registry, Kafka Connect)
+tools-1 ─── Kafka UI (later: Schema Registry, Kafka Connect)
 ```
 
-| Listener | Bind | Advertised | Kim kullanır |
+| Listener | Bind | Advertised | Consumers |
 |---|---|---|---|
-| `INTERNAL` | `:9092` | `kafka-N:9092` | broker'lar arası, UI, SR, Connect |
-| `EXTERNAL` | `:39092` | `localhost:3909N` | dışarıdan bağlanan client'lar |
-| `CONTROLLER` | `:9093` | — | KRaft quorum (dışarı açılmaz) |
+| `INTERNAL` | `:9092` | `kafka-N:9092` | brokers, UI, SR, Connect |
+| `EXTERNAL` | `:39092` | `localhost:3909N` | clients outside the cluster |
+| `CONTROLLER` | `:9093` | — | KRaft quorum (never exposed) |
 
-## Hızlı başlangıç
+## Quick start
 
-Gereksinimler: `podman` (veya `docker`), `ansible-core`, `make`.
+Requirements: `podman` (or `docker`), `ansible-core`, `make`.
 
 ```bash
-make lab-up    # WSL'de 4 adet systemd+sshd container ayağa kalkar
-make ping      # bağlantı testi
-make site      # kurulum
-make verify    # uçtan uca doğrulama
+make lab-up    # four systemd + sshd containers come up on WSL
+make ping      # connectivity check
+make site      # deploy
+make verify    # end-to-end verification
 ```
 
-Kafka UI: <http://localhost:8080> · Broker (host'tan): `localhost:39091`
+Kafka UI: <http://localhost:8080> · Broker from the host: `localhost:39091`
 
-## Lab ile prod arasındaki fark: sadece inventory
+## Lab and production differ only by inventory
 
-Lab node'ları container ama Ansible onlara **SSH ile** bağlanır ve içlerinde
-gerçek `systemd` çalışır. Roller ortamı bilmez. Prod'a geçiş:
+The lab nodes are containers, but Ansible reaches them over **SSH** and real
+`systemd` runs inside them. Roles never learn which environment they are in.
+Moving to production:
 
 ```
 inventories/lab/hosts.yml    → 127.0.0.1:2221-2224  (podman)
-inventories/prod/hosts.yml   → gerçek IP'ler:22     (VM)
+inventories/prod/hosts.yml   → real IPs:22          (VMs)
 ```
 
-Profil farkları (`heap`, OS tuning) tek dosyada toplanır:
+Profile differences (heap size, OS tuning) live in a single file:
 `inventories/*/group_vars/all/profile.yml`.
 
-## Yeni bileşen eklemek
+## Adding a component
 
 ```bash
-# 1) inventory'ye grubu + host'u ekle
-# 2) sadece o bileşeni kur
+# 1) add the group and host to the inventory
+# 2) deploy just that component
 ansible-playbook -i inventories/lab playbooks/site.yml --tags schema_registry
-# 3) UI'ı yeni bileşenden haberdar et — broker'lara tek task gitmez
+# 3) let the UI discover it — not a single task touches the brokers
 ansible-playbook -i inventories/lab playbooks/site.yml --tags kafka_ui
 ```
 
-Bunu mümkün kılan tasarım kuralları: [CONTRIBUTING.md](CONTRIBUTING.md)
+The design rules that make this possible: [CONTRIBUTING.md](CONTRIBUTING.md)
 
-## Dizin yapısı
+## Layout
 
 ```
-lab/           WSL test ortamı (Containerfile + up/down scriptleri)
-inventories/   lab ve prod envanterleri
+lab/           WSL test environment (Containerfile + up/down scripts)
+inventories/   lab and production inventories
 playbooks/     site, verify, rolling-restart, upgrade
 roles/         common, java, kafka_kraft, kafka_ui, schema_registry, kafka_connect
-molecule/      CI test senaryoları
-docs/          mimari, kurulum, işletme, güvenlik, troubleshooting
+molecule/      CI test scenarios
+docs/          architecture, installation, operations, security, troubleshooting
 ```
 
-## Lisans
+## License
 
 MIT

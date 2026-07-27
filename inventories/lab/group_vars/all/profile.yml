@@ -1,15 +1,15 @@
 ---
-# Lab profili — prod ile farkların TEK toplandığı yer.
-# Roller bu bayrakları okur; rol içinde "lab mı prod mu" sorgusu yapılmaz.
+# Lab profile — the ONLY place where lab and production differ.
+# Roles read these flags; a role never asks "am I in lab or production?".
 
 kafka_env_profile: lab
 
-# WSL'de toplam 7 GB RAM var; 3 broker sığsın diye küçük heap.
-# Prod'da inventories/prod/group_vars/all/profile.yml içinde 6g olur.
+# WSL has ~7 GB of RAM in total, so three brokers need small heaps.
+# Production sets this to 6g in inventories/prod/group_vars/all/profile.yml.
 kafka_heap_size: 512m
 
-# OS tuning'i lab'da KAPALI.
-# Neden: container'da sysctl (vm.swappiness, vm.max_map_count) ve THP
-# ayarları ya no-op olur ya da WSL host çekirdeğini etkiler — ikisi de
-# istenmeyen davranış. Prod'da true.
+# OS tuning is DISABLED in the lab.
+# Why: inside a container, sysctl settings (vm.swappiness, vm.max_map_count)
+# and THP tweaks are either no-ops or they leak into the host kernel — both
+# are wrong. Production sets this to true.
 kafka_tune_os: false

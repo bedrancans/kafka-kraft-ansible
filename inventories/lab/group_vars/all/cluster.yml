@@ -1,27 +1,27 @@
 ---
-# Cluster genelinde paylaşılan tanımlar.
+# Cluster-wide definitions.
 #
-# KURAL 2 (bkz. CONTRIBUTING.md): hiçbir rol adres hardcode etmez.
-# Aşağıdaki değerler inventory'den türetilir; broker eklemek/çıkarmak
-# için sadece hosts.yml'e dokunmak yeterlidir.
+# RULE 2 (see CONTRIBUTING.md): no role ever hardcodes an address.
+# Everything below is derived from the inventory, so adding or removing a
+# broker only ever means editing hosts.yml.
 
 kafka_cluster_name: kafka-lab
 
-# --- Portlar ---
-kafka_internal_port: 9092     # broker'lar arası + uydu bileşenler
-kafka_external_port: 39092    # container içi EXTERNAL listener portu
-kafka_controller_port: 9093   # KRaft quorum, dışarı açılmaz
+# --- Ports ---
+kafka_internal_port: 9092     # broker-to-broker and satellite components
+kafka_external_port: 39092    # EXTERNAL listener port inside the container
+kafka_controller_port: 9093   # KRaft quorum, never exposed outside the cluster
 
-# --- Adresler ---
-# Container adı = inventory adı = DNS adı (aardvark-dns).
-# Prod'da bunu host_vars'ta private IP ile ezersin.
+# --- Addresses ---
+# Container name == inventory name == DNS name (aardvark-dns).
+# In production, override this per host with the private IP.
 kafka_internal_host: "{{ inventory_hostname }}"
 kafka_controller_host: "{{ inventory_hostname }}"
 
-# WSL host'undan bağlanan client'ların göreceği adres
+# The address clients outside the cluster connect to
 kafka_external_advertised_host: "localhost"
 
-# --- Türetilmiş: uydu bileşenlerin kullanacağı bootstrap listesi ---
+# --- Derived: the bootstrap list every satellite component consumes ---
 kafka_bootstrap_servers: >-
   {{ groups['kafka_brokers']
      | map('extract', hostvars, 'kafka_internal_host')

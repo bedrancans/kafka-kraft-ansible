@@ -1,8 +1,9 @@
-# Lab node imajı — "VM gibi davranan" container.
+# Lab node image — a container that behaves like a VM.
 #
-# Amaç: içinde gerçek systemd ve sshd çalışsın ki Ansible rolleri
-# gerçek bir VM'e bağlanıyormuş gibi (SSH + systemd) çalışsın.
-# Böylece prod'a geçerken tek değişen şey inventory dosyası olur.
+# Goal: run real systemd and sshd inside, so Ansible connects over SSH and
+# manages services through systemd exactly as it would on a real VM.
+# As a result the roles never know whether they run in a container or a VM,
+# and moving to production is only an inventory change.
 
 FROM docker.io/library/ubuntu:24.04
 
@@ -19,13 +20,14 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# dbus olmadan systemctl sadece root olarak çalışır (systemd'nin private
-# soketine düşer). Normal kullanıcı "Failed to connect to bus" alır.
-# Gerçek bir VM'de sistem bus'ı hep vardır; lab da öyle olmalı.
+# Without dbus, systemctl only works as root (it falls back to systemd's
+# private socket). An unprivileged user gets "Failed to connect to bus".
+# A real VM always has a system bus, so the lab must have one too.
 RUN systemctl enable dbus.service
 
-# Container'da anlamsız olan ya da hata üreten unit'ler.
-# Ağ ve DNS'i podman yönetiyor; udev/logind/getty container'da gereksiz.
+# Units that are meaningless or noisy inside a container.
+# Networking and DNS are handled by the container runtime; udev, logind
+# and getty have nothing to do here.
 RUN systemctl mask \
         dev-hugepages.mount \
         sys-fs-fuse-connections.mount \
@@ -37,26 +39,26 @@ RUN systemctl mask \
         getty.target \
         console-getty.service
 
-# Ubuntu 24.04 sshd'yi socket activation ile getiriyor;
-# klasik servis daha öngörülebilir.
+# Ubuntu 24.04 ships sshd behind socket activation;
+# the classic service unit is more predictable here.
 RUN systemctl disable ssh.socket >/dev/null 2>&1 || true \
     && systemctl enable ssh.service
 
-# Ansible'ın bağlanacağı kullanıcı
+# The user Ansible connects as
 ARG ANSIBLE_USER=ansible
 RUN useradd -m -s /bin/bash "${ANSIBLE_USER}" \
     && printf '%s ALL=(ALL) NOPASSWD:ALL\n' "${ANSIBLE_USER}" > "/etc/sudoers.d/${ANSIBLE_USER}" \
     && chmod 0440 "/etc/sudoers.d/${ANSIBLE_USER}" \
     && install -d -o "${ANSIBLE_USER}" -g "${ANSIBLE_USER}" -m 0700 "/home/${ANSIBLE_USER}/.ssh"
 
-# lab-up.sh bu dosyayı build'den hemen önce üretir (repoya girmez)
+# lab-up.sh writes this file right before the build (it is gitignored)
 COPY authorized_keys /home/ansible/.ssh/authorized_keys
 RUN chown ansible:ansible /home/ansible/.ssh/authorized_keys \
     && chmod 0600 /home/ansible/.ssh/authorized_keys
 
 EXPOSE 22
 
-# systemd'nin düzgün kapanabilmesi için
+# Lets systemd shut down cleanly
 STOPSIGNAL SIGRTMIN+3
 
 CMD ["/sbin/init"]

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Lab ortamını kaldırır.
-#   ./lab/lab-down.sh          -> container'ları siler
-#   ./lab/lab-down.sh --all    -> network ve imajı da siler
+# Tears the lab down.
+#   ./lab/lab-down.sh          -> remove the containers
+#   ./lab/lab-down.sh --all    -> also remove the network and the image
 #
 set -euo pipefail
 
@@ -15,20 +15,20 @@ log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
 for node in "${NODES[@]}"; do
     if "$ENGINE" container exists "$node" >/dev/null 2>&1; then
-        log "Siliniyor: $node"
+        log "Removing: $node"
         "$ENGINE" rm -f "$node" >/dev/null
     fi
 done
 
 if [[ "${1:-}" == "--all" ]]; then
     "$ENGINE" network exists "$NETWORK" >/dev/null 2>&1 && {
-        log "Network siliniyor: $NETWORK"
+        log "Removing network: $NETWORK"
         "$ENGINE" network rm "$NETWORK" >/dev/null
     }
     "$ENGINE" image exists "$IMAGE" >/dev/null 2>&1 && {
-        log "İmaj siliniyor: $IMAGE"
+        log "Removing image: $IMAGE"
         "$ENGINE" rmi "$IMAGE" >/dev/null
     }
 fi
 
-log "Lab kaldırıldı."
+log "Lab torn down."
