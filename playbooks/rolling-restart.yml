@@ -1,0 +1,60 @@
+---
+# Restarts every broker one at a time without interrupting the cluster.
+#
+#   ansible-playbook -i inventories/lab playbooks/rolling-restart.yml
+#
+# Why one at a time: with min.insync.replicas=2 a partition needs two of its
+# three replicas in sync to accept writes. One broker out of the ISR is fine;
+# two at once stops producers. So the play refuses to touch the next broker
+# until the previous one is back and every partition is fully replicated
+# again.
+
+- name: Refuse to start if the cluster is already degraded
+  hosts: kafka_brokers[0]
+  become: true
+  gather_facts: false
+  # Tagged so it can be skipped during recovery: when a node is already down,
+  # this check is exactly what you need to bypass to roll back.
+  #   ansible-playbook ... --skip-tags precheck
+  tags: [precheck]
+  tasks:
+    # Restarting brokers while partitions are already under-replicated is how
+    # a routine maintenance window turns into an incident.
+    - name: Check cluster health before touching anything
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: wait_healthy.yml
+      vars:
+        # Short timeout here: this is a go/no-go check, not a recovery wait.
+        kafka_health_timeout_sec: 30
+
+- name: Restart the brokers one at a time
+  hosts: kafka_brokers
+  become: true
+  gather_facts: false
+  serial: 1
+  # Stop the whole rollout the moment one node misbehaves, rather than
+  # working through the remaining brokers and taking the cluster down.
+  any_errors_fatal: true
+  max_fail_percentage: 0
+
+  tasks:
+    - name: Announce the node being restarted
+      ansible.builtin.debug:
+        msg: "Restarting {{ inventory_hostname }} (node id {{ kafka_node_id }})"
+
+    # The service name lives in the role, not here: a playbook using
+    # include_role does not inherit the role's defaults.
+    - name: Stop and start Kafka
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: restart.yml
+
+    - name: Wait until this broker has rejoined and caught up
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: wait_healthy.yml
+
+    - name: Report the node as done
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} is back, no under-replicated partitions"

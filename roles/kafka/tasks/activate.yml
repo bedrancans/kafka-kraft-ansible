@@ -1,0 +1,23 @@
+---
+# Makes an already-staged version the one the service runs.
+#
+# Split out of install.yml on purpose: staging a release is harmless on a live
+# broker, activating it is not. playbooks/upgrade.yml stages everywhere first
+# and then calls this file one node at a time.
+
+- name: Point the stable path at this version
+  ansible.builtin.file:
+    src: "{{ kafka_versioned_dir }}"
+    dest: "{{ kafka_install_dir }}"
+    state: link
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+  notify: Restart kafka
+
+- name: Record the active version
+  ansible.builtin.copy:
+    content: "{{ kafka_version }}\n"
+    dest: "{{ kafka_config_dir }}/installed-version"
+    owner: root
+    group: root
+    mode: "0644"

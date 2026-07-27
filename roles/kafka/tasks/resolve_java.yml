@@ -1,0 +1,20 @@
+---
+# Sets kafka_java_home. Imported by both preflight.yml and configure.yml so
+# that entry points which skip preflight — playbooks/upgrade.yml re-renders the
+# configuration without running it — still have a JVM path to write into the
+# service environment file.
+#
+# Resolved by major version rather than by following /usr/bin/java: a host may
+# carry several JVMs and the system default is not necessarily the one this
+# component was built against.
+
+- name: Resolve the Java runtime for the broker
+  ansible.builtin.include_role:
+    name: java
+    tasks_from: resolve.yml
+  vars:
+    java_required_major: "{{ kafka_java_major }}"
+
+- name: Set the Java home used by the service
+  ansible.builtin.set_fact:
+    kafka_java_home: "{{ java_home }}"

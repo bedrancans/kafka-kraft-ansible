@@ -36,23 +36,9 @@
     group: "{{ kafka_group }}"
     creates: "{{ kafka_versioned_dir }}/bin/kafka-server-start.sh"
 
-# /opt/kafka always points at the active version. Upgrading is then a symlink
-# flip plus a rolling restart, and rolling back is the same flip in reverse.
-- name: Point the stable path at this version
-  ansible.builtin.file:
-    src: "{{ kafka_versioned_dir }}"
-    dest: "{{ kafka_install_dir }}"
-    state: link
-    owner: "{{ kafka_user }}"
-    group: "{{ kafka_group }}"
-  notify: Restart kafka
-
-# Kafka ships its default configs inside the distribution. We render our own
-# into /etc/kafka, so the shipped ones are only a reference.
-- name: Record the installed version
-  ansible.builtin.copy:
-    content: "{{ kafka_version }}\n"
-    dest: "{{ kafka_config_dir }}/installed-version"
-    owner: root
-    group: root
-    mode: "0644"
+# Note what this file does NOT do: it never touches the /opt/kafka symlink.
+# Downloading and unpacking a new version is safe on a running broker, while
+# flipping the symlink is what actually changes which binaries the next
+# restart uses. Keeping them apart is what lets playbooks/upgrade.yml stage a
+# release across the whole cluster first and only then activate it one node at
+# a time. See activate.yml.

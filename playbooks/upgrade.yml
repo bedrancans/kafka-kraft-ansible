@@ -1,0 +1,139 @@
+---
+# Moves the cluster to a different Kafka version without an outage.
+#
+#   ansible-playbook -i inventories/lab playbooks/upgrade.yml \
+#     -e kafka_version=4.3.2 \
+#     -e kafka_archive_sha512=<checksum from downloads.apache.org>
+#
+# The same playbook downgrades: point it at an older version that is still
+# unpacked on the hosts and it flips back, because every version keeps its own
+# directory under /opt and only the symlink moves.
+#
+# Two stages on purpose:
+#
+#   1. stage    download and unpack everywhere. Safe on a running broker,
+#               nothing about the running process changes.
+#   2. activate flip the symlink and restart, one node at a time, waiting for
+#               full replication in between. This is the part that can hurt,
+#               so it is the part that goes slowly.
+#
+# Splitting them also means a failed download fails before any broker has been
+# restarted, instead of halfway through the cluster.
+
+- name: Check the request and the current state
+  hosts: kafka_brokers
+  become: true
+  gather_facts: false
+  tasks:
+    # Both are required explicitly. The role carries defaults for the version
+    # it currently installs, but a playbook does not inherit a role's defaults
+    # — and inheriting them here would be worse than not: an upgrade run
+    # without a checksum would silently verify the new archive against the old
+    # version's hash and fail somewhere far less obvious.
+    - name: Assert the target version and its checksum were supplied
+      ansible.builtin.assert:
+        that:
+          - kafka_target_version | length > 0
+          - kafka_target_sha512 | length == 128
+        fail_msg: >-
+          Both the target version and its checksum are required:
+            -e kafka_version=4.3.2
+            -e kafka_archive_sha512=<the sha512 published next to the archive>
+          Find it at
+          https://downloads.apache.org/kafka/<version>/kafka_2.13-<version>.tgz.sha512
+        quiet: true
+      vars:
+        kafka_target_version: "{{ kafka_version | default('') }}"
+        kafka_target_sha512: "{{ kafka_archive_sha512 | default('') }}"
+
+    - name: Read the currently active version
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: report_version.yml
+
+    - name: Report what will change
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ kafka_active_version }} -> {{ kafka_version }}"
+
+- name: Refuse to start if the cluster is already degraded
+  hosts: kafka_brokers[0]
+  become: true
+  gather_facts: false
+  # Tagged so it can be skipped during recovery: when a node is already down,
+  # this check is exactly what you need to bypass to roll back.
+  #   ansible-playbook ... --skip-tags precheck
+  tags: [precheck]
+  tasks:
+    - name: Check cluster health before touching anything
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: wait_healthy.yml
+      vars:
+        kafka_health_timeout_sec: 30
+
+# Stage 1 — everywhere at once, nothing restarts.
+- name: Stage the new distribution on every broker
+  hosts: kafka_brokers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Download and unpack the target version
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: install.yml
+
+# Stage 2 — one node at a time, waiting for the cluster in between.
+- name: Activate the new version node by node
+  hosts: kafka_brokers
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  max_fail_percentage: 0
+
+  tasks:
+    - name: Announce the node being upgraded
+      ansible.builtin.debug:
+        msg: "Upgrading {{ inventory_hostname }} to Kafka {{ kafka_version }}"
+
+    - name: Point the stable path at the new version
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: activate.yml
+
+    # The configuration may gain or lose settings between releases, so it is
+    # rendered again before the broker comes back on the new binaries.
+    - name: Re-render the configuration
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: configure.yml
+
+    - name: Restart Kafka on the new version
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: restart.yml
+
+    - name: Wait until this broker has rejoined and caught up
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: wait_healthy.yml
+
+- name: Confirm every broker runs the requested version
+  hosts: kafka_brokers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the active version back
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: report_version.yml
+
+    - name: Assert the upgrade landed
+      ansible.builtin.assert:
+        that:
+          - kafka_active_version == kafka_version
+        fail_msg: >-
+          {{ inventory_hostname }} reports {{ kafka_active_version }},
+          expected {{ kafka_version }}.
+        success_msg: "{{ inventory_hostname }} runs Kafka {{ kafka_version }}"
+        quiet: true

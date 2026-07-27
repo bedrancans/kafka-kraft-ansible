@@ -1,0 +1,60 @@
+---
+# Blocks until this broker is back in the cluster and every partition has a
+# full set of in-sync replicas.
+#
+# Used by playbooks/rolling-restart.yml between nodes. Restarting the next
+# broker before the previous one has caught up is how a rolling restart turns
+# into an outage: with min.insync.replicas=2, two brokers missing from the ISR
+# at the same time stops writes.
+
+- name: Wait for the broker port to accept connections
+  ansible.builtin.wait_for:
+    port: "{{ kafka_internal_port }}"
+    host: 127.0.0.1
+    timeout: "{{ kafka_health_timeout_sec }}"
+
+- name: Wait until no partition is under-replicated
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-topics.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --describe --under-replicated-partitions
+  register: kafka_under_replicated
+  # The command prints nothing when every partition is fully replicated.
+  # It can also fail outright while the broker is still initialising, which
+  # is why failed_when is off and the retry loop judges the result instead.
+  until:
+    - kafka_under_replicated.rc == 0
+    - kafka_under_replicated.stdout | trim | length == 0
+  retries: "{{ (kafka_health_timeout_sec | int / 5) | int }}"
+  delay: 5
+  failed_when: false
+  changed_when: false
+
+- name: Assert the cluster came back fully replicated
+  ansible.builtin.assert:
+    that:
+      - kafka_under_replicated.rc == 0
+      - kafka_under_replicated.stdout | trim | length == 0
+    fail_msg: >-
+      Partitions are still under-replicated after
+      {{ kafka_health_timeout_sec }}s on {{ inventory_hostname }}:
+      {{ kafka_under_replicated.stdout | default('(broker unreachable)') }}
+      Stopping here rather than restarting the next broker.
+    quiet: true
+
+- name: Confirm the metadata quorum still has a leader
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-metadata-quorum.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      describe --status
+  register: kafka_quorum_health
+  changed_when: false
+
+- name: Assert the quorum has a leader
+  ansible.builtin.assert:
+    that:
+      - "'LeaderId:' in kafka_quorum_health.stdout"
+    fail_msg: The metadata quorum has no leader after restarting {{ inventory_hostname }}.
+    quiet: true

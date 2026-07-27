@@ -346,7 +346,7 @@ system bus, so the lab image must install `dbus` too.
 
 ---
 
-### PHASE 5 — Operational playbooks
+### PHASE 5 — Operational playbooks ✅
 
 **Steps**
 
@@ -360,9 +360,38 @@ system bus, so the lab image must install `dbus` too.
    log cleanup.
 
 **DoD**
-- a producer running throughout a rolling restart **loses no messages**
-- the cluster keeps accepting writes while one broker is stopped
-  (the `min.insync.replicas=2` check)
+- a producer running throughout a rolling restart **loses no messages** ✅
+  (7562 sent, 7562 acknowledged, 7562 stored, zero delivery failures, with
+  `acks=all` and idempotence enabled while all three brokers restarted)
+- the cluster keeps accepting writes while one broker is stopped ✅
+  (50/50 accepted with one broker down; 0/50 with two down, which is
+  `min.insync.replicas=2` refusing data it cannot protect rather than
+  silently accepting it)
+- `upgrade.yml` moves the cluster between versions and back ✅
+
+**Lessons learned**
+
+- Playbooks do not inherit a role's defaults. This bit three times — the
+  service name, the config directory, `kafka_java_home` — and the fix each
+  time was to move the knowledge back into the role as a `tasks_from` file
+  (`restart.yml`, `report_version.yml`, `resolve_java.yml`) rather than
+  restating paths in the playbook.
+- Installing and activating a release are different operations.
+  `install.yml` now only downloads and unpacks, which is safe on a running
+  broker; `activate.yml` flips the symlink, which is not. `upgrade.yml`
+  stages across the whole cluster before activating a single node, so a bad
+  download fails before anything has restarted.
+- **KRaft cannot be downgraded below the metadata version its log was written
+  with.** Moving from 4.3.1 to 4.2.1 failed with
+  `UnsupportedVersionException: Can't read version 4 of BrokerEndpoint`.
+  This was worth running: `any_errors_fatal` stopped after the first node, the
+  remaining two kept serving, the quorum elected a new leader, and the same
+  playbook rolled that node back. A downgrade is a restore-from-backup
+  operation, not a symlink flip — the runbook says so now.
+- A guard that cannot be bypassed is a liability during an incident. The
+  health precheck is tagged `precheck` precisely so a rollback can skip it,
+  because the state it refuses to proceed from is exactly the state you are
+  trying to recover from.
 
 → `git tag v0.4.0`
 

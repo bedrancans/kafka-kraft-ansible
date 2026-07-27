@@ -16,6 +16,9 @@
 - name: Install the distribution
   ansible.builtin.import_tasks: install.yml
 
+- name: Activate this version
+  ansible.builtin.import_tasks: activate.yml
+
 - name: Render the configuration
   ansible.builtin.import_tasks: configure.yml
 

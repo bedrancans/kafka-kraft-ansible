@@ -1,0 +1,18 @@
+---
+# Publishes kafka_active_version as a host fact.
+#
+# Lives in the role for the same reason restart.yml does: a playbook that
+# includes a role does not inherit its defaults, so anything that needs to
+# know where the role puts its files has to ask the role.
+
+- name: Read the recorded version
+  ansible.builtin.slurp:
+    src: "{{ kafka_config_dir }}/installed-version"
+  register: kafka_recorded_version
+  failed_when: false
+
+- name: Publish it as a fact
+  ansible.builtin.set_fact:
+    kafka_active_version: >-
+      {{ (kafka_recorded_version.content | default('') | b64decode | trim)
+         | default('unknown', true) }}

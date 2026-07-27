@@ -2,6 +2,11 @@
 # Both templates notify the restart handler, so a config change causes exactly
 # one restart at the end of the play rather than one per file.
 
+# The environment file needs kafka_java_home, and configure.yml is reachable
+# without preflight (playbooks/upgrade.yml re-renders the config directly).
+- name: Resolve the Java runtime
+  ansible.builtin.import_tasks: resolve_java.yml
+
 - name: Render server.properties
   ansible.builtin.template:
     src: server.properties.j2

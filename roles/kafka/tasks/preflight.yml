@@ -57,17 +57,5 @@
       KRaft cannot form a quorum until every node can resolve the others.
     quiet: true
 
-# Resolved by major version rather than by following /usr/bin/java: a host may
-# carry several JVMs, and the system default is not necessarily the one this
-# component was built against. The lookup lives in the java role so it is not
-# duplicated per component.
-- name: Resolve the Java runtime for the broker
-  ansible.builtin.include_role:
-    name: java
-    tasks_from: resolve.yml
-  vars:
-    java_required_major: "{{ kafka_java_major }}"
-
-- name: Set the Java home used by the service
-  ansible.builtin.set_fact:
-    kafka_java_home: "{{ java_home }}"
+- name: Resolve the Java runtime
+  ansible.builtin.import_tasks: resolve_java.yml

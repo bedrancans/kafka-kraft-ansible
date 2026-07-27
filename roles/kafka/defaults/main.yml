@@ -140,3 +140,9 @@ kafka_service_nofile_limit: 100000
 # ===========================================================================
 # How long tasks/verify.yml waits for the broker to answer.
 kafka_verify_timeout_sec: 60
+
+# How long tasks/wait_healthy.yml waits for a restarted broker to rejoin and
+# for every partition to regain a full ISR. Generous on purpose: a broker with
+# a large log directory can take minutes to catch up, and giving up early
+# during a rolling restart is worse than waiting.
+kafka_health_timeout_sec: 300

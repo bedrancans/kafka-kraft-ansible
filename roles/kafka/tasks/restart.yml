@@ -1,0 +1,19 @@
+---
+# A full stop and start rather than `state: restarted`, so the broker is
+# definitely down before it comes back up and systemd's TimeoutStopSec is
+# honoured for the shutdown.
+#
+# Lives in the role because the service name is the role's business:
+# a playbook using include_role does not inherit the role's defaults, and
+# hardcoding "kafka" in the playbook would put the same fact in two places.
+
+- name: Stop Kafka
+  ansible.builtin.systemd_service:
+    name: "{{ kafka_service_name }}"
+    state: stopped
+
+- name: Start Kafka
+  ansible.builtin.systemd_service:
+    name: "{{ kafka_service_name }}"
+    state: started
+    daemon_reload: true
