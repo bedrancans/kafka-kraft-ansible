@@ -28,6 +28,15 @@ jobs:
       - name: Install linters
         run: pipx install ansible-lint && pipx install yamllint
 
+      # ansible-lint resolves module names against installed collections.
+      # Without them every community.crypto and containers.podman task reads
+      # as an unresolvable action.
+      - name: Install collections
+        run: |
+          pipx install --include-deps ansible
+          ansible-galaxy collection install -r requirements.yml \
+            -p .ansible/collections
+
       - name: yamllint
         run: yamllint .
 

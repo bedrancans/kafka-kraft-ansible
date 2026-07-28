@@ -1,1 +1,1 @@
-../../inventories/lab/group_vars/kafka_ui
+../../../inventories/lab/group_vars/kafka_ui
