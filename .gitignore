@@ -29,3 +29,7 @@ __pycache__/
 # Personal working notes, never published
 notes/
 *.local.md
+
+# The private certificate authority. A CA key in a public repository signs
+# certificates for anyone who clones it.
+.tls/

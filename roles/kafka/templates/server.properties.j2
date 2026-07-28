@@ -22,40 +22,91 @@ controller.quorum.voters={% for host in groups['kafka_controllers'] -%}
 {% endif %}
 ############################# Listeners #############################
 #
-# One address can never serve both the cluster and the outside world:
-#   INTERNAL   reachable under the node's own hostname, used broker to broker
-#   EXTERNAL   reachable from outside, advertised under a different address
-#   CONTROLLER quorum traffic only, never advertised
+# Rendered from kafka_listeners. One address can never serve both the cluster
+# and the outside world, so each listener states what it advertises:
+# its own hostname, whatever a client outside reaches it as, or nothing at all
+# for the controller listener, which Kafka refuses to advertise.
 #
-{% set listeners = [] %}
-{% set advertised = [] %}
-{% set protocol_map = [] %}
-{% if 'broker' in kafka_process_roles %}
-{%   set _ = listeners.append(kafka_internal_listener ~ '://:' ~ kafka_internal_port) %}
-{%   set _ = advertised.append(kafka_internal_listener ~ '://' ~ kafka_internal_host ~ ':' ~ kafka_internal_port) %}
-{%   set _ = protocol_map.append(kafka_internal_listener ~ ':' ~ kafka_internal_security_protocol) %}
-{%   if kafka_external_listener_enabled | bool %}
-{%     set _ = listeners.append(kafka_external_listener ~ '://:' ~ kafka_external_port) %}
-{%     set _ = advertised.append(kafka_external_listener ~ '://' ~ kafka_external_advertised_host ~ ':' ~ kafka_external_advertised_port) %}
-{%     set _ = protocol_map.append(kafka_external_listener ~ ':' ~ kafka_external_security_protocol) %}
+{% set active = [] %}
+{% for listener in kafka_listeners %}
+{%   if kafka_process_roles.split(',') | select('in', listener.roles) | list | length > 0 %}
+{%     set _ = active.append(listener) %}
 {%   endif %}
-{% endif %}
-{% if 'controller' in kafka_process_roles %}
-{%   set _ = listeners.append(kafka_controller_listener ~ '://:' ~ kafka_controller_port) %}
-{%   set _ = protocol_map.append(kafka_controller_listener ~ ':' ~ kafka_controller_security_protocol) %}
-{% endif %}
-listeners={{ listeners | join(',') }}
+{% endfor %}
+listeners={% for l in active %}{{ l.name }}://:{{ l.port }}{{ "," if not loop.last }}{% endfor %}
+
+{% set advertised = active | rejectattr('advertise', 'equalto', 'none') | list %}
 {% if advertised | length > 0 %}
-# The controller listener is deliberately absent here: Kafka rejects a config
-# that advertises it.
-advertised.listeners={{ advertised | join(',') }}
+advertised.listeners={% for l in advertised %}
+{{- l.name }}://
+{{- kafka_internal_host if l.advertise == 'internal' else kafka_external_advertised_host }}:
+{{- l.port if l.advertise == 'internal' else kafka_external_advertised_port }}
+{{- "," if not loop.last }}{% endfor %}
+
 {% endif %}
-listener.security.protocol.map={{ protocol_map | join(',') }}
+listener.security.protocol.map={% for l in active %}{{ l.name }}:{{ l.protocol }}{{ "," if not loop.last }}{% endfor %}
+
 {% if 'broker' in kafka_process_roles %}
-inter.broker.listener.name={{ kafka_internal_listener }}
+inter.broker.listener.name={{ kafka_inter_broker_listener }}
 {% endif %}
 {% if 'controller' in kafka_process_roles %}
-controller.listener.names={{ kafka_controller_listener }}
+# First entry is the one used for outbound connections, which is what makes a
+# two-step listener migration possible.
+controller.listener.names={{ kafka_controller_listener_names | join(',') }}
+{% endif %}
+{% if kafka_security_enabled | bool %}
+
+############################# TLS #############################
+#
+# PEM rather than JKS: Kafka has read it directly since 2.7, which removes
+# keytool, a store password, and a conversion step whose failures are opaque.
+# The keystore file holds the certificate followed by its private key.
+#
+ssl.keystore.type=PEM
+ssl.keystore.location={{ kafka_tls_keystore }}
+ssl.truststore.type=PEM
+ssl.truststore.location={{ kafka_tls_truststore }}
+
+# Brokers present a certificate to the controller quorum, so the peer's
+# identity there is its subject. Without a mapping rule the principal is the
+# whole DN, and every ACL and super.users entry has to spell it out.
+ssl.principal.mapping.rules={{ kafka_ssl_principal_mapping }}
+
+# Required on the controller listener: mutual TLS is what authenticates a
+# broker to the quorum, since SCRAM credentials live in the metadata the
+# quorum itself manages — which would make them a prerequisite for reaching
+# the thing that stores them.
+ssl.client.auth=required
+ssl.endpoint.identification.algorithm=https
+
+############################# SASL #############################
+
+sasl.enabled.mechanisms={{ kafka_sasl_mechanism }}
+sasl.mechanism.inter.broker.protocol={{ kafka_sasl_mechanism }}
+
+# A JAAS entry is required for every listener that speaks SASL, not only the
+# one carrying inter-broker traffic: a SASL listener without one refuses to
+# start with "Could not find a 'KafkaServer' entry in the JAAS configuration".
+# The credential is the broker's own, used both to accept connections and to
+# authenticate when it dials another broker.
+{% for l in active if l.protocol.startswith('SASL') %}
+listener.name.{{ l.name | lower }}.{{ kafka_sasl_mechanism | lower }}.sasl.jaas.config=\
+org.apache.kafka.common.security.scram.ScramLoginModule required \
+username="{{ inventory_hostname }}" \
+password="{{ kafka_broker_password }}";
+{% endfor %}
+{% endif %}
+{% if kafka_authorizer_enabled | bool %}
+
+############################# Authorization #############################
+#
+# Anything without a matching ACL is denied. The brokers are super users
+# because the authorizer applies to them too, and a broker that cannot manage
+# the cluster is a broker that cannot start.
+#
+authorizer.class.name={{ kafka_authorizer_class }}
+super.users={{ kafka_super_users | join(';') }}
+allow.everyone.if.no.acl.found={{ kafka_allow_everyone_if_no_acl_found | lower }}
 {% endif %}
 
 ############################# Storage #############################

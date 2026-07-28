@@ -1,0 +1,10 @@
+---
+# The CA lives on the control node and is created once for the whole run;
+# everything else is per host. delegate_to and run_once sit on the individual
+# tasks rather than on the include, because an include is not a task and
+# cannot carry them.
+- name: Ensure the certificate authority exists
+  ansible.builtin.include_tasks: ca.yml
+
+- name: Issue this host's certificate
+  ansible.builtin.include_tasks: node.yml

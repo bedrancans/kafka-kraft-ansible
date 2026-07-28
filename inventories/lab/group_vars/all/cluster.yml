@@ -44,8 +44,11 @@ schema_registry_port: 8081
 kafka_connect_port: 8083
 
 # --- Derived: the bootstrap list every satellite component consumes ---
+# Uses kafka_client_port rather than the plaintext port directly, so the list
+# follows the security migration: components re-rendered after the switch
+# point at the secure listener without anyone editing this.
 kafka_bootstrap_servers: >-
   {{ groups['kafka_brokers']
      | map('extract', hostvars, 'kafka_internal_host')
-     | map('regex_replace', '$', ':' ~ kafka_internal_port)
+     | map('regex_replace', '$', ':' ~ kafka_client_port | trim)
      | join(',') }}

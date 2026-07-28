@@ -5,6 +5,8 @@ ignore: |
   .venv/
   .ansible/
   .molecule/
+  # An ansible-vault file is ciphertext with a header line, not YAML.
+  inventories/*/group_vars/**/vault.yml
 
 rules:
   line-length:

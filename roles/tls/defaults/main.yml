@@ -1,0 +1,47 @@
+---
+# Issues the TLS material every component uses: one private CA on the control
+# node, one certificate per host, distributed as PEM.
+#
+# PEM rather than JKS or PKCS12 because Kafka has read PEM directly since 2.7,
+# and every component here is a Kafka client. That removes keytool, the store
+# passwords it would need, and a conversion step whose failures are opaque.
+
+# --- Certificate authority (control node only) --------------------------
+# The CA private key never leaves the machine running Ansible. Gitignored:
+# a CA key in a public repository signs certificates for anyone who clones it.
+tls_ca_dir: "{{ playbook_dir }}/../.tls"
+tls_ca_key: "{{ tls_ca_dir }}/ca.key"
+tls_ca_cert: "{{ tls_ca_dir }}/ca.crt"
+tls_ca_common_name: "kafka-kraft-ansible lab CA"
+tls_ca_validity_days: 3650
+
+# --- Per-host certificates ----------------------------------------------
+tls_key_size: 4096
+tls_validity_days: 825
+
+# Names the certificate is valid for. Brokers are reached as their inventory
+# name from inside the cluster and as localhost from the host, so both belong
+# in the SAN or one of the two paths fails verification.
+tls_subject_alt_names:
+  - "DNS:{{ inventory_hostname }}"
+  - "DNS:localhost"
+  - "IP:127.0.0.1"
+
+# --- On the target ------------------------------------------------------
+tls_dir: /etc/kafka/tls
+# The keystore file holds the certificate followed by its private key, which
+# is what Kafka's PEM keystore expects.
+tls_keystore_path: "{{ tls_dir }}/server.pem"
+tls_truststore_path: "{{ tls_dir }}/ca.crt"
+
+# Which account may read the private key. Set per component so the Schema
+# Registry worker cannot read the broker's key and vice versa.
+tls_owner: root
+tls_group: kafka
+
+# Handlers to notify when the certificate changes. Empty by default: the role
+# has no idea which service a given host runs, and notifying a handler that
+# does not exist in the play is an error. Plays that combine this role with a
+# component role set it; certificate renewal on its own is followed by
+# playbooks/rolling-restart.yml.
+tls_notify: []

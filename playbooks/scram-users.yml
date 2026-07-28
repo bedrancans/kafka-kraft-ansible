@@ -1,0 +1,19 @@
+---
+# Creates the SCRAM credentials the cluster will authenticate against.
+#
+#   ansible-playbook -i inventories/lab playbooks/scram-users.yml
+#
+# Safe on a running cluster and idempotent: it adds accounts that do not exist
+# and changes nothing else. Run it before enabling SASL, not during — the
+# credentials have to be in the metadata before a listener starts asking for
+# them.
+- name: Create the SCRAM credentials
+  hosts: kafka_brokers[0]
+  become: true
+  gather_facts: false
+  tags: [scram]
+  tasks:
+    - name: Add the accounts
+      ansible.builtin.include_role:
+        name: kafka
+        tasks_from: scram.yml

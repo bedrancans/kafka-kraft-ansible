@@ -1,0 +1,32 @@
+---
+# Issues certificates without changing any service configuration, so it can be
+# run on a live cluster and again for renewal. Enabling TLS is a separate
+# step; see playbooks/enable-security.yml.
+
+- name: Issue certificates for the brokers
+  hosts: kafka_brokers
+  become: true
+  tags: [tls]
+  roles:
+    - role: tls
+      tls_group: "{{ kafka_group | default('kafka') }}"
+
+- name: Issue certificates for the satellite components
+  hosts: kafka_ui:schema_registry:kafka_connect
+  become: true
+  tags: [tls]
+  tasks:
+    # Each component reads the material as its own service account, so the
+    # group differs per host. A host running several components gets the
+    # certificate once, owned by the group of whichever runs there.
+    - name: Issue this host's certificate
+      ansible.builtin.include_role:
+        name: tls
+      vars:
+        tls_dir: /etc/kafka-tls
+        tls_keystore_path: /etc/kafka-tls/client.pem
+        tls_truststore_path: /etc/kafka-tls/ca.crt
+        tls_group: >-
+          {{ 'kafka-connect'
+             if inventory_hostname in groups['kafka_connect'] | default([])
+             else 'schema-registry' }}

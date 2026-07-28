@@ -54,19 +54,90 @@ kafka_process_roles: "broker,controller"
 # ===========================================================================
 # Listeners
 # ===========================================================================
-# Three listeners, because one address can never satisfy both the cluster and
-# the outside world. See docs/01-architecture.md.
-kafka_internal_listener: INTERNAL      # broker <-> broker, UI, SR, Connect
-kafka_external_listener: EXTERNAL      # clients outside the cluster
-kafka_controller_listener: CONTROLLER  # KRaft quorum only, never exposed
+# Declared as a list rather than built into the template, because migrating to
+# TLS is not a matter of changing a protocol in place: during a rolling
+# restart half the brokers would speak PLAINTEXT and half SASL_SSL on the same
+# port, and they would stop being able to talk to each other. The migration is
+# instead "add a listener, roll, switch to it, roll, remove the old one, roll"
+# — three edits to this list, each followed by playbooks/rolling-restart.yml.
+#
+# Fields:
+#   name      the listener name Kafka uses internally
+#   port      what it binds
+#   protocol  PLAINTEXT | SSL | SASL_PLAINTEXT | SASL_SSL
+#   advertise internal | external | none
+#             internal advertises the node's own hostname, external advertises
+#             whatever a client outside the cluster reaches it as, and none is
+#             for the controller listener, which Kafka refuses to advertise
+#   roles     which process roles open it
+kafka_listeners:
+  - name: INTERNAL
+    port: "{{ kafka_internal_port }}"
+    protocol: PLAINTEXT
+    advertise: internal
+    roles: [broker]
+  - name: EXTERNAL
+    port: "{{ kafka_external_port }}"
+    protocol: PLAINTEXT
+    advertise: external
+    roles: [broker]
+  - name: CONTROLLER
+    port: "{{ kafka_controller_port }}"
+    protocol: PLAINTEXT
+    advertise: none
+    roles: [controller]
 
-# Phase 8 turns these into SASL_SSL.
-kafka_internal_security_protocol: PLAINTEXT
-kafka_external_security_protocol: PLAINTEXT
-kafka_controller_security_protocol: PLAINTEXT
+# Which listener carries broker-to-broker traffic, and which one the quorum
+# uses. Switching either is a step of the migration, not a rewrite.
+kafka_inter_broker_listener: INTERNAL
+kafka_controller_listener_names: [CONTROLLER]
 
-# Set to false to drop the EXTERNAL listener entirely (single-network setups).
-kafka_external_listener_enabled: true
+# ===========================================================================
+# Security
+# ===========================================================================
+# Off by default: a cluster that cannot be brought up without certificates is
+# a cluster nobody experiments with. Turning it on renders the TLS and SASL
+# settings; which listeners actually use them is decided by their protocol
+# above.
+kafka_security_enabled: false
+
+kafka_sasl_mechanism: SCRAM-SHA-512
+
+# This broker's own SCRAM credential, picked out of the vaulted map by
+# hostname. Per-broker rather than shared: a leaked credential then identifies
+# which host leaked it and can be rotated on its own.
+kafka_broker_password: "{{ kafka_broker_passwords[inventory_hostname] | default('') }}"
+
+# Written by the tls role.
+kafka_tls_dir: "{{ kafka_config_dir }}/tls"
+kafka_tls_keystore: "{{ kafka_tls_dir }}/server.pem"
+kafka_tls_truststore: "{{ kafka_tls_dir }}/ca.crt"
+
+# Brokers authenticate to the controller quorum with their certificate, so the
+# principal there is the certificate subject rather than a SASL user.
+# ssl.principal.mapping.rules turns "CN=kafka-1" into "kafka-1".
+kafka_ssl_principal_mapping: "RULE:^CN=(.*?),?.*$/$1/,DEFAULT"
+
+# Accounts exempt from authorization. The brokers themselves have to be here
+# or they cannot manage the cluster once the authorizer is on.
+kafka_super_users: >-
+  {{ ['User:admin'] + (groups['kafka_brokers'] | map('regex_replace', '^', 'User:') | list) }}
+
+# Every account the cluster needs, assembled from the vault. Brokers first
+# because they must exist before the inter-broker listener starts using SASL.
+kafka_scram_users: >-
+  {{ (kafka_broker_passwords | default({}) | dict2items)
+     + [{'key': 'admin', 'value': kafka_admin_password | default('')}]
+     + (kafka_service_passwords | default({}) | dict2items)
+     + [{'key': 'client', 'value': kafka_client_password | default('')}] }}
+
+# The authorizer is separate from authentication on purpose: turning it on
+# before the ACLs exist locks everyone out, so it is the last switch thrown.
+kafka_authorizer_enabled: false
+kafka_authorizer_class: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+# When false, anything without a matching ACL is denied. Left false because
+# the alternative is an authorizer that authorizes nothing.
+kafka_allow_everyone_if_no_acl_found: false
 
 # ===========================================================================
 # Cluster-wide durability

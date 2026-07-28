@@ -1,0 +1,83 @@
+---
+# The security migration, expressed as four states of the listener list.
+#
+# Changing a listener's protocol in place does not work: during the rolling
+# restart half the brokers would speak PLAINTEXT and half SASL_SSL on the same
+# port, and they would stop being able to reach each other. So the secure
+# listeners are added alongside the old ones, the cluster is moved onto them,
+# and only then are the old ones removed — three edits, three rolling
+# restarts, and no moment where the cluster is split.
+#
+# Advance one stage at a time:
+#   ansible-playbook ... playbooks/site.yml --tags kafka \
+#     -e kafka_listener_profile=add-secure
+#   ansible-playbook ... playbooks/rolling-restart.yml
+#
+# Stages:
+#   plaintext    where the cluster starts
+#   add-secure   secure listeners exist; nothing uses them yet
+#   switch       inter-broker traffic and clients move to the secure listener
+#   secure       the plaintext listeners are gone
+kafka_listener_profile: plaintext
+
+# The secure internal listener gets its own port so it can coexist with the
+# plaintext one during the migration.
+kafka_secure_internal_port: 9094
+
+kafka_listener_profiles:
+  plaintext:
+    - {name: INTERNAL, port: 9092, protocol: PLAINTEXT, advertise: internal, roles: [broker]}
+    - {name: EXTERNAL, port: 39092, protocol: PLAINTEXT, advertise: external, roles: [broker]}
+    - {name: CONTROLLER, port: 9093, protocol: PLAINTEXT, advertise: none, roles: [controller]}
+
+  add-secure:
+    - {name: INTERNAL, port: 9092, protocol: PLAINTEXT, advertise: internal, roles: [broker]}
+    - {name: EXTERNAL, port: 39092, protocol: PLAINTEXT, advertise: external, roles: [broker]}
+    - {name: INTERNAL_SSL, port: 9094, protocol: SASL_SSL, advertise: internal, roles: [broker]}
+    - {name: CONTROLLER, port: 9093, protocol: PLAINTEXT, advertise: none, roles: [controller]}
+
+  switch:
+    - {name: INTERNAL, port: 9092, protocol: PLAINTEXT, advertise: internal, roles: [broker]}
+    - {name: EXTERNAL, port: 39092, protocol: PLAINTEXT, advertise: external, roles: [broker]}
+    - {name: INTERNAL_SSL, port: 9094, protocol: SASL_SSL, advertise: internal, roles: [broker]}
+    - {name: CONTROLLER, port: 9093, protocol: PLAINTEXT, advertise: none, roles: [controller]}
+
+  # The secure external listener takes over the published container port here
+  # rather than claiming one of its own. The lab publishes a fixed set of host
+  # ports and adding one means recreating the container, which would destroy
+  # the cluster this migration exists to survive. It can only take the port
+  # over once the plaintext listener has released it, which is this stage.
+  secure:
+    - {name: INTERNAL_SSL, port: 9094, protocol: SASL_SSL, advertise: internal, roles: [broker]}
+    - {name: EXTERNAL_SSL, port: 39092, protocol: SASL_SSL, advertise: external, roles: [broker]}
+    - {name: CONTROLLER, port: 9093, protocol: PLAINTEXT, advertise: none, roles: [controller]}
+
+kafka_listeners: "{{ kafka_listener_profiles[kafka_listener_profile] }}"
+
+# Inter-broker traffic moves at the "switch" stage, not before: the secure
+# listener has to exist on every broker first.
+kafka_inter_broker_listener: >-
+  {{ 'INTERNAL_SSL' if kafka_listener_profile in ['switch', 'secure'] else 'INTERNAL' }}
+
+# TLS material and SASL settings are rendered as soon as a secure listener
+# exists, whether or not anything is using it yet.
+kafka_security_enabled: "{{ kafka_listener_profile != 'plaintext' }}"
+
+# Which port the satellite components connect to. It follows the profile, so
+# reconfiguring them is a matter of re-running their roles: the bootstrap list
+# they render already points at the right listener.
+kafka_client_port: >-
+  {{ kafka_secure_internal_port if kafka_listener_profile in ['switch', 'secure']
+     else kafka_internal_port }}
+
+# Whether clients need credentials at all.
+kafka_client_security_enabled: "{{ kafka_listener_profile in ['switch', 'secure'] }}"
+
+# The controller listener stays PLAINTEXT, and that is a decision rather than
+# an oversight. controller.quorum.voters pins the quorum to one endpoint per
+# node, so a second controller listener cannot be added alongside the first —
+# the trick that makes the client migration seamless is simply not available
+# here. Changing it means a coordinated restart of all three controllers,
+# which is the one thing the operational playbooks refuse to do. The listener
+# is never published outside the cluster network.
+# See docs/adr/0004-controller-listener-stays-plaintext.md.

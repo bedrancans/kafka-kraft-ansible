@@ -25,6 +25,15 @@
   hosts: kafka_brokers
   become: true
   tags: [kafka]
+  # All at once by default, because forming a quorum for the first time needs
+  # a majority of the nodes up together — one at a time would leave the first
+  # broker waiting for peers that Ansible has not reached yet.
+  #
+  # On a cluster that already exists this is the wrong default: a config
+  # change would restart every broker at the same moment. Apply those with
+  #   -e kafka_serial=1
+  # or through playbooks/rolling-restart.yml.
+  serial: "{{ kafka_serial | default('100%') }}"
   roles:
     - role: kafka
 

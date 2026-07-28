@@ -1,0 +1,55 @@
+---
+# Creates the SCRAM credentials in the cluster's metadata.
+#
+# Ordering matters: the credentials have to exist before any listener starts
+# requiring them, which is why this runs while the cluster is still reachable
+# over its current listener rather than as part of the security cutover.
+#
+# Run from one broker; the credentials are cluster-wide.
+
+- name: List the accounts that already have SCRAM credentials
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-configs.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --describe --entity-type users
+  register: kafka_scram_existing
+  changed_when: false
+
+- name: Create the missing SCRAM credentials
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-configs.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --alter --entity-type users --entity-name {{ item.key }}
+      --add-config {{ kafka_sasl_mechanism }}=[password={{ item.value }}]
+  loop: "{{ kafka_scram_users }}"
+  loop_control:
+    label: "{{ item.key }}"
+  vars:
+    # kafka-configs reports "SCRAM credential configs for user-principal
+    # 'name' are ...", quotes included. Built here rather than inline because
+    # the nested quoting makes it unreadable inside a when expression.
+    kafka_scram_marker: "user-principal '{{ item.key }}'"
+  when:
+    - item.value | length > 0
+    - kafka_scram_marker not in kafka_scram_existing.stdout
+  # The password is on the command line, so the task's arguments must not be
+  # logged. Kafka stores only a salted hash, but Ansible would print this.
+  no_log: true
+  changed_when: true
+
+- name: Read the accounts back
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-configs.sh
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --describe --entity-type users
+  register: kafka_scram_final
+  changed_when: false
+
+- name: Show which accounts exist
+  ansible.builtin.debug:
+    msg: "{{ kafka_scram_final.stdout | regex_findall(kafka_scram_name_pattern) | sort }}"
+  vars:
+    kafka_scram_name_pattern: "user-principal '([^']+)'"

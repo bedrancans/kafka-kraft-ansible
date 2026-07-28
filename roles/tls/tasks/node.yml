@@ -1,0 +1,76 @@
+---
+# Key and CSR are generated on the control node next to the CA, signed there,
+# and only the results are copied out. The CA key never travels.
+
+- name: Generate this host's private key
+  community.crypto.openssl_privatekey:
+    path: "{{ tls_ca_dir }}/{{ inventory_hostname }}.key"
+    size: "{{ tls_key_size }}"
+    # PKCS#8 ("BEGIN PRIVATE KEY"), not the PKCS#1 default. Kafka's PEM
+    # keystore reader rejects PKCS#1 with "algid parse error, not a sequence",
+    # which does not obviously mean "wrong key encoding".
+    format: pkcs8
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+
+- name: Generate this host's signing request
+  community.crypto.openssl_csr:
+    path: "{{ tls_ca_dir }}/{{ inventory_hostname }}.csr"
+    privatekey_path: "{{ tls_ca_dir }}/{{ inventory_hostname }}.key"
+    # The CN becomes the principal when a peer authenticates with this
+    # certificate, which is how the controller listener identifies brokers.
+    common_name: "{{ inventory_hostname }}"
+    subject_alt_name: "{{ tls_subject_alt_names }}"
+    # Used as both server and client: brokers present this certificate when
+    # they connect to the controller quorum.
+    extended_key_usage:
+      - serverAuth
+      - clientAuth
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+
+- name: Sign it with the CA
+  community.crypto.x509_certificate:
+    path: "{{ tls_ca_dir }}/{{ inventory_hostname }}.crt"
+    csr_path: "{{ tls_ca_dir }}/{{ inventory_hostname }}.csr"
+    ownca_path: "{{ tls_ca_cert }}"
+    ownca_privatekey_path: "{{ tls_ca_key }}"
+    ownca_not_after: "+{{ tls_validity_days }}d"
+    provider: ownca
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+
+- name: Create the TLS directory on the host
+  ansible.builtin.file:
+    path: "{{ tls_dir }}"
+    state: directory
+    owner: "{{ tls_owner }}"
+    group: "{{ tls_group }}"
+    mode: "0750"
+
+# Certificate first, then key: that is the order Kafka's PEM keystore reads.
+- name: Assemble and install the keystore
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('file', tls_ca_dir ~ '/' ~ inventory_hostname ~ '.crt') }}
+
+      {{ lookup('file', tls_ca_dir ~ '/' ~ inventory_hostname ~ '.key') }}
+    dest: "{{ tls_keystore_path }}"
+    owner: "{{ tls_owner }}"
+    group: "{{ tls_group }}"
+    # The key is unencrypted, so the file permissions are the only thing
+    # protecting it. Readable by the service group, nobody else.
+    mode: "0640"
+  notify: "{{ tls_notify }}"
+
+- name: Install the truststore
+  ansible.builtin.copy:
+    src: "{{ tls_ca_cert }}"
+    dest: "{{ tls_truststore_path }}"
+    owner: "{{ tls_owner }}"
+    group: "{{ tls_group }}"
+    mode: "0644"
+  notify: "{{ tls_notify }}"

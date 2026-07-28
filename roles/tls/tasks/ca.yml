@@ -1,0 +1,51 @@
+---
+# Runs once, on the control node. Creating the CA per host would give every
+# broker a different trust root, and nothing would verify anything.
+
+- name: Create the CA directory
+  ansible.builtin.file:
+    path: "{{ tls_ca_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: Generate the CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ tls_ca_key }}"
+    size: "{{ tls_key_size }}"
+    format: pkcs8
+    mode: "0600"
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: Generate the CA signing request
+  community.crypto.openssl_csr:
+    path: "{{ tls_ca_dir }}/ca.csr"
+    privatekey_path: "{{ tls_ca_key }}"
+    common_name: "{{ tls_ca_common_name }}"
+    basic_constraints:
+      - "CA:TRUE"
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+    mode: "0600"
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: Self-sign the CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ tls_ca_cert }}"
+    privatekey_path: "{{ tls_ca_key }}"
+    csr_path: "{{ tls_ca_dir }}/ca.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ tls_ca_validity_days }}d"
+    mode: "0644"
+  delegate_to: localhost
+  run_once: true
+  become: false
