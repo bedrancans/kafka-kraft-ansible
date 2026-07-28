@@ -135,9 +135,14 @@ kafka_scram_users: >-
      + (kafka_service_passwords | default({}) | dict2items)
      + [{'key': 'client', 'value': kafka_client_password | default('')}] }}
 
-# The authorizer is separate from authentication on purpose: turning it on
-# before the ACLs exist locks everyone out, so it is the last switch thrown.
-kafka_authorizer_enabled: true
+# Off by default, and it has to be. A fresh cluster has no ACLs, and
+# kafka-acls.sh cannot create any until an authorizer exists — so a default of
+# true makes a new cluster undeployable: the authorizer denies every component
+# and the tool that would fix it needs the cluster to work first.
+#
+# Turning it on is an explicit three-step sequence documented in
+# docs/06-security.md: enable it permissively, create the rules, then enforce.
+kafka_authorizer_enabled: false
 kafka_authorizer_class: org.apache.kafka.metadata.authorizer.StandardAuthorizer
 # When false, anything without a matching ACL is denied. Left false because
 # the alternative is an authorizer that authorizes nothing.

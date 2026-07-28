@@ -65,8 +65,13 @@ key in the same repository is not encryption.
 
 ## Authorization
 
-`allow.everyone.if.no.acl.found` is false: anything without a matching rule is
-denied. The brokers and `admin` are super users, because the authorizer
+The authorizer is **off by default**, and it has to be. A fresh cluster has no
+ACLs, and `kafka-acls.sh` cannot create any until an authorizer exists — so a
+default of on makes a new cluster undeployable: the authorizer denies every
+component, and the tool that would fix that needs the cluster working first.
+
+Once it is on, `allow.everyone.if.no.acl.found` is false: anything without a
+matching rule is denied. The brokers and `admin` are super users, because the authorizer
 applies to them too and a broker that cannot manage the cluster cannot start.
 
 ```bash
