@@ -556,7 +556,7 @@ The procedure and the measurements are written up in
 
 ---
 
-### PHASE 9 — Documentation and release
+### PHASE 9 — Documentation and release ✅
 
 | File | Contents |
 |---|---|
@@ -572,6 +572,25 @@ The procedure and the measurements are written up in
 | `docs/09-extending.md` | how to add a new component |
 | `docs/adr/` | why KRaft, why combined mode, why containers-as-VMs, why a static quorum |
 | `CONTRIBUTING.md` | the five rules of the modularity contract |
+
+**Notes on what the documentation does and does not claim**
+
+- `07-monitoring.md` says up front that no metrics stack is deployed. Writing
+  a monitoring page about something that does not exist would have been the
+  easiest page here and the least honest one.
+- `04-configuration-reference.md` is a map of where variables live rather than
+  a copy of their comments. A copy goes stale and there is no way to tell
+  which of the two is wrong.
+- `08-troubleshooting.md` is built entirely from failures encountered while
+  building this. Every symptom listed is what was actually seen, and none of
+  them names its own cause.
+- CI runs the cluster on plaintext listeners. It needs the vault password,
+  which is deliberately not in the repository, and a cluster formatted with
+  SCRAM credentials already present — a freshly formatted cluster with only
+  SASL listeners has nowhere to create the first account from. The security
+  migration is exercised against the lab instead, and the gap is stated in
+  `molecule/default/group_vars/all/zz-ci-overrides.yml` rather than left for
+  someone to discover.
 
 → `git tag v1.0.0`
 

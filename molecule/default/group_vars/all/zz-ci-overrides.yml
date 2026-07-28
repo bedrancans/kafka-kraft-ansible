@@ -1,0 +1,17 @@
+---
+# Loaded after the symlinked files above — group_vars in a directory are read
+# alphabetically and later files win — so this overrides the lab's settings
+# without copying them.
+#
+# CI runs the cluster on plaintext listeners. Not because the secure path does
+# not work, but because it needs two things a CI runner cannot have: the vault
+# password, which is deliberately not in the repository, and a cluster whose
+# storage was formatted with SCRAM credentials already in it. A freshly
+# formatted cluster with only SASL listeners has nowhere to create the first
+# account from.
+#
+# So CI proves the deployment converges and is idempotent; the security
+# migration is exercised against the lab, and the evidence is in
+# docs/06-security.md. The gap is named rather than papered over.
+kafka_listener_profile: plaintext
+kafka_authorizer_enabled: false

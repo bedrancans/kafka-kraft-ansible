@@ -8,10 +8,14 @@ driver:
   name: podman
 
 platforms:
+  # Prefixed, because container names are global per user and the lab uses the
+  # unprefixed ones. Without this, running the scenario destroys the lab —
+  # molecule's first action is `destroy`.
+  #
   # The anchor keeps the four nodes from drifting apart; only the name and the
   # group membership differ. systemd has to be a string here, not a YAML
   # boolean, and it makes podman mount /run itself.
-  - name: kafka-1
+  - name: ci-kafka-1
     <<: &node
       image: molecule-kafka-node:24.04
       dockerfile: Containerfile
@@ -27,19 +31,19 @@ platforms:
       - kafka_brokers
       - kafka_controllers
 
-  - name: kafka-2
+  - name: ci-kafka-2
     <<: *node
     groups:
       - kafka_brokers
       - kafka_controllers
 
-  - name: kafka-3
+  - name: ci-kafka-3
     <<: *node
     groups:
       - kafka_brokers
       - kafka_controllers
 
-  - name: tools-1
+  - name: ci-tools-1
     <<: *node
     groups:
       - kafka_ui
@@ -61,7 +65,7 @@ provisioner:
     # Molecule skips its own inline host_vars once links are declared, so the
     # per-node identities live in a real directory next to this file.
     links:
-      group_vars: ../../inventories/lab/group_vars/
+      group_vars: group_vars/
       host_vars: host_vars/
 
 verifier:

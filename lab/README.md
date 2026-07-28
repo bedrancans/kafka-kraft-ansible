@@ -69,3 +69,18 @@ ssh -i ~/.ssh/kafka_lab -p 2221 ansible@127.0.0.1
   The production inventory sets it to `true`.
 - SSH host keys are baked into the image and shared by every node.
   Acceptable for a lab; `host_key_checking` is disabled anyway.
+
+## Molecule and the lab
+
+The molecule scenario uses container names prefixed with `ci-`, because
+container names are global per user and molecule's first action is `destroy`.
+Without the prefix, `make test` would tear the lab down before starting.
+
+They can run side by side, but not on 8 GB of RAM: two clusters is roughly
+7 GB of heap and JVM overhead. Take the lab down first.
+
+```bash
+make lab-down
+make test
+make lab-up
+```
