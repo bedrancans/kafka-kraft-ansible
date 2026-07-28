@@ -218,8 +218,14 @@ kafka_service_nofile_limit: 100000
 # nothing while the cluster is still plaintext, so the same task text works
 # before and after the migration.
 kafka_admin_config: "{{ kafka_config_dir }}/admin.properties"
+# Follows the *client* flag, not the broker one. Between them sits the
+# add-secure stage, where the broker renders its TLS settings and opens a
+# secure listener while the CLI is still talking to the plaintext port —
+# using the credentials there produces "terminated during authentication",
+# which reads like a network problem and is not one.
 kafka_cli_args: >-
-  {{ '--command-config ' ~ kafka_admin_config if kafka_security_enabled | bool else '' }}
+  {{ '--command-config ' ~ kafka_admin_config
+     if kafka_client_security_enabled | default(false) | bool else '' }}
 
 # The port the CLI connects to. Follows the migration like everything else.
 kafka_cli_port: "{{ kafka_client_port | default(kafka_internal_port) | trim }}"
