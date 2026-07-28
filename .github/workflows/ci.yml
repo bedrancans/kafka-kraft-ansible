@@ -37,6 +37,14 @@ jobs:
           ansible-galaxy collection install -r requirements.yml \
             -p .ansible/collections
 
+      # ansible.cfg points at a vault password file that is deliberately not in
+      # the repository. Nothing in CI decrypts anything — the encrypted
+      # inventory file is not part of either path — but ansible refuses to
+      # start at all when the file its config names is missing, so a throwaway
+      # one is enough.
+      - name: Provide a placeholder vault password
+        run: echo "ci-does-not-decrypt-anything" > .vault_pass
+
       - name: yamllint
         run: yamllint .
 
@@ -70,6 +78,14 @@ jobs:
           pipx install --include-deps ansible
           ansible-galaxy collection install -r requirements.yml \
             -p .ansible/collections
+
+      # ansible.cfg points at a vault password file that is deliberately not in
+      # the repository. Nothing in CI decrypts anything — the encrypted
+      # inventory file is not part of either path — but ansible refuses to
+      # start at all when the file its config names is missing, so a throwaway
+      # one is enough.
+      - name: Provide a placeholder vault password
+        run: echo "ci-does-not-decrypt-anything" > .vault_pass
 
       - name: molecule test
         run: molecule test
