@@ -24,6 +24,8 @@
         name: tls
       vars:
         tls_dir: /etc/kafka-tls
+        # Several components read the truststore from this directory.
+        tls_dir_mode: "0755"
         tls_keystore_path: /etc/kafka-tls/client.pem
         tls_truststore_path: /etc/kafka-tls/ca.crt
         tls_group: >-

@@ -500,7 +500,7 @@ The procedure and the measurements are written up in
 
 ---
 
-### PHASE 8 — Security
+### PHASE 8 — Security ✅
 
 **Steps**
 
@@ -513,9 +513,44 @@ The procedure and the measurements are written up in
 5. Passwords under `ansible-vault`.
 
 **DoD**
-- unauthenticated clients are rejected
-- every component talks over SASL_SSL
-- the migration ran as a rolling restart with no data loss
+- unauthenticated clients are rejected ✅ (a plaintext client gets a transport
+  error; a SASL client without an ACL gets an authorization error)
+- every component talks over SASL_SSL ✅ (UI, Schema Registry and Connect all
+  authenticate with their own SCRAM account)
+- the client migration ran as rolling restarts with no data loss ✅
+  (three passes: add the secure listener, switch inter-broker traffic onto it,
+  remove the plaintext one)
+- ACLs grant each component only what it needs ✅ (25 rules; `client` may
+  write to `rolling-test` and not to `connect-demo`; `kafka-ui` may read
+  everything and write nothing)
+
+**Lessons learned**
+
+- Enabling the authorizer forces the controller listener to authenticate.
+  With it PLAINTEXT, quorum traffic arrives as `User:ANONYMOUS`, which is not
+  a super user, and every broker terminated itself with
+  `ClusterAuthorizationException`. The listener now uses mutual TLS. See
+  [docs/adr/0004-controller-listener-tls.md](docs/adr/0004-controller-listener-tls.md).
+- The controller listener is the one thing that cannot migrate without an
+  outage: `controller.quorum.voters` names a single endpoint per node, so
+  there is nowhere to add a second listener to move onto.
+- `RULE:^CN=(.*?),?.*$/$1/`, which appears in most examples, produces an empty
+  principal for a bare `CN=kafka-1` subject — the lazy group matches nothing.
+  Every authorization then fails in a way that never mentions certificates.
+- Handlers are dropped when a play fails. One broker ended up with a correct
+  config file and a process running the old one, and the next run saw no
+  change so it never restarted it either. `force_handlers: true`.
+- `site.yml` restarted all three brokers within four seconds the first time a
+  config change was applied to a live cluster. Its all-at-once default is
+  right for forming a quorum and wrong for everything after; config changes
+  take `-e kafka_serial=1`.
+- Ordering: ACLs cannot be created before the authorizer exists
+  (`SecurityDisabledException`), and an authorizer with no rules denies
+  everything. So: authorizer on with `allow.everyone.if.no.acl.found=true`,
+  create the rules, then turn enforcement on.
+- A host running several components needs the truststore directory at `0755`.
+  It was `0750` owned by one component's group, and the others got
+  `AccessDeniedException` on a world-readable file they could not reach.
 
 → `git tag v0.7.0`
 

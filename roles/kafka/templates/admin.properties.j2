@@ -1,0 +1,14 @@
+{{ ansible_managed | comment }}
+# Credentials for the cluster's own command line tools.
+#
+# Once the listeners require SASL, every kafka-topics.sh and
+# kafka-metadata-quorum.sh call needs this — including the ones this role runs
+# to verify its own work. The admin account is a super user, so a mistake in
+# the ACLs cannot lock the tooling out along with everyone else.
+
+security.protocol=SASL_SSL
+sasl.mechanism={{ kafka_sasl_mechanism }}
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+username="admin" password="{{ kafka_admin_password }}";
+ssl.truststore.type=PEM
+ssl.truststore.location={{ kafka_tls_truststore }}

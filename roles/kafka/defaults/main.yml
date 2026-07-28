@@ -116,7 +116,11 @@ kafka_tls_truststore: "{{ kafka_tls_dir }}/ca.crt"
 # Brokers authenticate to the controller quorum with their certificate, so the
 # principal there is the certificate subject rather than a SASL user.
 # ssl.principal.mapping.rules turns "CN=kafka-1" into "kafka-1".
-kafka_ssl_principal_mapping: "RULE:^CN=(.*?),?.*$/$1/,DEFAULT"
+# ([^,]+) rather than the (.*?) that appears in most examples: a lazy group
+# matches the empty string when the DN has no further components, and the
+# principal comes out as "User:" with nothing after it. Certificates here are
+# a bare CN, so the greedy character class is the correct one.
+kafka_ssl_principal_mapping: "RULE:^CN=([^,]+).*$/$1/,DEFAULT"
 
 # Accounts exempt from authorization. The brokers themselves have to be here
 # or they cannot manage the cluster once the authorizer is on.
@@ -133,7 +137,7 @@ kafka_scram_users: >-
 
 # The authorizer is separate from authentication on purpose: turning it on
 # before the ACLs exist locks everyone out, so it is the last switch thrown.
-kafka_authorizer_enabled: false
+kafka_authorizer_enabled: true
 kafka_authorizer_class: org.apache.kafka.metadata.authorizer.StandardAuthorizer
 # When false, anything without a matching ACL is denied. Left false because
 # the alternative is an authorizer that authorizes nothing.
@@ -205,6 +209,20 @@ kafka_service_restart_sec: 5
 # forces a slow recovery scan on the next start.
 kafka_service_stop_timeout_sec: 180
 kafka_service_nofile_limit: 100000
+
+# ===========================================================================
+# Command line access
+# ===========================================================================
+# Once a listener requires SASL, every CLI call needs credentials — including
+# the ones this role makes to check its own work. kafka_cli_args expands to
+# nothing while the cluster is still plaintext, so the same task text works
+# before and after the migration.
+kafka_admin_config: "{{ kafka_config_dir }}/admin.properties"
+kafka_cli_args: >-
+  {{ '--command-config ' ~ kafka_admin_config if kafka_security_enabled | bool else '' }}
+
+# The port the CLI connects to. Follows the migration like everything else.
+kafka_cli_port: "{{ kafka_client_port | default(kafka_internal_port) | trim }}"
 
 # ===========================================================================
 # Verification

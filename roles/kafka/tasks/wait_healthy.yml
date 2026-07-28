@@ -9,7 +9,7 @@
 
 - name: Wait for the broker port to accept connections
   ansible.builtin.wait_for:
-    port: "{{ kafka_internal_port }}"
+    port: "{{ kafka_cli_port }}"
     host: 127.0.0.1
     timeout: "{{ kafka_health_timeout_sec }}"
 
@@ -17,7 +17,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-topics.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_cli_port }}
+      {{ kafka_cli_args }}
       --describe --under-replicated-partitions
   register: kafka_under_replicated
   # The command prints nothing when every partition is fully replicated.
@@ -47,7 +48,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-metadata-quorum.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_cli_port }}
+      {{ kafka_cli_args }}
       describe --status
   register: kafka_quorum_health
   changed_when: false

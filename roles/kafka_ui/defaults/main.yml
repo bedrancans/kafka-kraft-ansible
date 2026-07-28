@@ -77,3 +77,16 @@ kafka_ui_service_nofile_limit: 16384
 # ===========================================================================
 # A Spring Boot application of this size takes a while to become healthy.
 kafka_ui_verify_timeout_sec: 180
+
+# ===========================================================================
+# Cluster credentials
+# ===========================================================================
+# Follows kafka_client_security_enabled from group_vars, so this component is
+# reconfigured by the same profile switch that moves the brokers. Clients need
+# only the truststore: mutual TLS is used between brokers and the controller
+# quorum, not for client connections.
+kafka_ui_security_enabled: "{{ kafka_client_security_enabled | default(false) }}"
+kafka_ui_sasl_mechanism: "{{ kafka_sasl_mechanism | default('SCRAM-SHA-512') }}"
+kafka_ui_sasl_username: kafka-ui
+kafka_ui_sasl_password: "{{ kafka_service_passwords[kafka_ui_sasl_username] | default('') }}"
+kafka_ui_truststore: /etc/kafka-tls/ca.crt

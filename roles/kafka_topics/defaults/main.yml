@@ -27,3 +27,16 @@ kafka_topics_declarations: []
 # disruptive and neither is something a converge run should do behind your
 # back. A mismatch is reported instead.
 kafka_topics_reconcile_config: true
+
+# ===========================================================================
+# Command line access
+# ===========================================================================
+# Derived from the cluster-wide security settings rather than borrowed from
+# the kafka role, since a role does not inherit another role's defaults.
+# Both expand to the plaintext values while the cluster is still plaintext,
+# so the same tasks work on either side of the migration.
+kafka_topics_cli_port: "{{ kafka_client_port | default(9092) | trim }}"
+kafka_topics_admin_config: /etc/kafka/admin.properties
+kafka_topics_cli_args: >-
+  {{ '--command-config ' ~ kafka_topics_admin_config
+     if kafka_client_security_enabled | default(false) | bool else '' }}

@@ -1,0 +1,80 @@
+---
+# Grants each component exactly what it needs and nothing else.
+#
+# The authorizer is switched on separately, and after these rules exist:
+# turning it on first denies everything, including the brokers' own traffic.
+# That ordering is the whole reason this is its own role.
+#
+# Brokers are not listed. They are super users in server.properties, because
+# a broker that cannot manage the cluster cannot start, and expressing that as
+# ACLs means every internal operation needs a rule.
+
+kafka_acls_bootstrap: >-
+  {{ groups['kafka_brokers'] | first }}:{{ kafka_client_port | trim }}
+# Rendered by the kafka role on every broker, because its own CLI calls need
+# it too. Stated here as a path rather than borrowed as a variable, since a
+# role does not inherit another role's defaults.
+kafka_acls_command_config: /etc/kafka/admin.properties
+
+# Each entry becomes one kafka-acls.sh invocation. Named _rules rather than
+# just kafka_acls because a role variable has to carry the role name, and
+# "kafka_acls" is the role itself.
+#   principal  the SASL user
+#   operations what it may do
+#   resource   topic | group | cluster | transactional-id
+#   pattern    literal | prefixed
+kafka_acls_rules:
+  # Schema Registry owns exactly one topic and one consumer group.
+  - principal: schema-registry
+    resource: topic
+    name: _schemas
+    pattern: literal
+    operations: [Read, Write, Describe, DescribeConfigs]
+  - principal: schema-registry
+    resource: group
+    name: schema-registry
+    pattern: prefixed
+    operations: [Read, Describe]
+
+  # Connect stores its state in three topics and coordinates through groups
+  # named after its worker group id.
+  - principal: kafka-connect
+    resource: topic
+    name: connect-
+    pattern: prefixed
+    operations: [Read, Write, Describe, DescribeConfigs, Create]
+  - principal: kafka-connect
+    resource: group
+    name: "{{ kafka_cluster_name }}-connect"
+    pattern: prefixed
+    operations: [Read, Describe]
+
+  # The UI reads: topics, their configuration, consumer groups and cluster
+  # metadata. It is deliberately given no Write anywhere.
+  - principal: kafka-ui
+    resource: topic
+    name: "*"
+    pattern: literal
+    operations: [Read, Describe, DescribeConfigs]
+  - principal: kafka-ui
+    resource: group
+    name: "*"
+    pattern: literal
+    operations: [Read, Describe]
+  - principal: kafka-ui
+    resource: cluster
+    name: kafka-cluster
+    pattern: literal
+    operations: [Describe, DescribeConfigs]
+
+  # The external smoke-test client works within one topic prefix.
+  - principal: client
+    resource: topic
+    name: rolling-test
+    pattern: literal
+    operations: [Read, Write, Describe]
+  - principal: client
+    resource: group
+    name: "*"
+    pattern: literal
+    operations: [Read, Describe]

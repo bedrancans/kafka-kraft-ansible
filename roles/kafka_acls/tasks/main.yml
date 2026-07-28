@@ -1,0 +1,53 @@
+---
+# Runs from one broker with an admin client configuration, because the cluster
+# now requires credentials to talk to itself.
+
+- name: List the ACLs that already exist
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-acls.sh
+      --bootstrap-server {{ kafka_acls_bootstrap }}
+      --command-config {{ kafka_acls_command_config }}
+      --list
+  register: kafka_acls_existing
+  changed_when: false
+
+# One invocation per rule. kafka-acls.sh is idempotent on its own, but it
+# always reports success, so the existing set is checked first — otherwise
+# every run would look like a change and idempotency could never be verified.
+- name: Grant the declared permissions
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-acls.sh
+      --bootstrap-server {{ kafka_acls_bootstrap }}
+      --command-config {{ kafka_acls_command_config }}
+      --add --allow-principal User:{{ item.principal }}
+      --{{ item.resource }} {{ item.name }}
+      --resource-pattern-type {{ item.pattern }}
+      {% for op in item.operations %}--operation {{ op }} {% endfor %}
+  loop: "{{ kafka_acls_rules }}"
+  loop_control:
+    label: "{{ item.principal }} -> {{ item.resource }}:{{ item.name }}"
+  vars:
+    kafka_acls_marker: "principal=User:{{ item.principal }}"
+  when: >-
+    kafka_acls_marker not in kafka_acls_existing.stdout
+    or kafka_acls_force | default(false) | bool
+  changed_when: true
+
+- name: Read the resulting rules back
+  ansible.builtin.command:
+    cmd: >-
+      {{ kafka_install_dir }}/bin/kafka-acls.sh
+      --bootstrap-server {{ kafka_acls_bootstrap }}
+      --command-config {{ kafka_acls_command_config }}
+      --list
+  register: kafka_acls_final
+  changed_when: false
+
+- name: Report how many rules are in place
+  ansible.builtin.debug:
+    msg: >-
+      {{ kafka_acls_final.stdout_lines | select('search', 'principal=User:') | list | length }}
+      ACL(s) across
+      {{ kafka_acls_final.stdout | regex_findall('User:([a-z-]+)') | unique | sort | join(', ') }}

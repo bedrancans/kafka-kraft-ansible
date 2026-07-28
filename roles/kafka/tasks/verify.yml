@@ -1,7 +1,7 @@
 ---
 - name: Wait for the internal listener to accept connections
   ansible.builtin.wait_for:
-    port: "{{ kafka_internal_port }}"
+    port: "{{ kafka_cli_port }}"
     host: 127.0.0.1
     timeout: "{{ kafka_verify_timeout_sec }}"
 
@@ -33,7 +33,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-metadata-quorum.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_cli_port }}
+      {{ kafka_cli_args }}
       describe --status
   register: kafka_quorum_status
   changed_when: false

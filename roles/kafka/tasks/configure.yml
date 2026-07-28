@@ -24,3 +24,14 @@
     group: "{{ kafka_group }}"
     mode: "0640"
   notify: Restart kafka
+
+# Rendered even while the cluster is still plaintext, so the credentials are
+# already in place the moment a listener starts requiring them.
+- name: Render the admin client configuration
+  ansible.builtin.template:
+    src: admin.properties.j2
+    dest: "{{ kafka_admin_config }}"
+    owner: root
+    group: "{{ kafka_group }}"
+    mode: "0640"
+  when: kafka_security_enabled | bool

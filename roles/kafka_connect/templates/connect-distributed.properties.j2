@@ -53,6 +53,25 @@ listeners=http://{{ kafka_connect_bind_address }}:{{ kafka_connect_port }}
 rest.advertised.host.name={{ inventory_hostname }}
 rest.advertised.port={{ kafka_connect_port }}
 
+{% if kafka_connect_security_enabled | bool %}
+############################# Cluster credentials #############################
+#
+# The worker has three sets of clients: its own (the top-level settings), the
+# producers a source connector uses, and the consumers a sink connector uses.
+# Each reads its own prefix, so the credentials are repeated rather than
+# inherited — a worker that authenticates while its connectors do not is a
+# confusing way to find that out.
+#
+{% set jaas = 'org.apache.kafka.common.security.scram.ScramLoginModule required username="' ~ kafka_connect_sasl_username ~ '" password="' ~ kafka_connect_sasl_password ~ '";' %}
+{% for prefix in ['', 'producer.', 'consumer.', 'admin.'] %}
+{{ prefix }}security.protocol=SASL_SSL
+{{ prefix }}sasl.mechanism={{ kafka_connect_sasl_mechanism }}
+{{ prefix }}sasl.jaas.config={{ jaas }}
+{{ prefix }}ssl.truststore.type=PEM
+{{ prefix }}ssl.truststore.location={{ kafka_connect_truststore }}
+{% endfor %}
+
+{% endif %}
 ############################# Plugins #############################
 #
 # Kept outside the distribution directory so a Kafka upgrade does not take the

@@ -21,3 +21,17 @@ schema.compatibility.level={{ schema_registry_compatibility_level }}
 
 # Identifies this instance in the group that elects a leader for writes.
 host.name={{ inventory_hostname }}
+{% if schema_registry_security_enabled | bool %}
+
+############################# Cluster credentials #############################
+#
+# Only a truststore: the registry authenticates with SCRAM, not with a client
+# certificate. It still has to trust the CA that signed the brokers.
+#
+kafkastore.security.protocol=SASL_SSL
+kafkastore.sasl.mechanism={{ schema_registry_sasl_mechanism }}
+kafkastore.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+username="{{ schema_registry_sasl_username }}" password="{{ schema_registry_sasl_password }}";
+kafkastore.ssl.truststore.type=PEM
+kafkastore.ssl.truststore.location={{ schema_registry_truststore }}
+{% endif %}

@@ -39,6 +39,13 @@ tls_truststore_path: "{{ tls_dir }}/ca.crt"
 tls_owner: root
 tls_group: kafka
 
+# Directory mode. 0750 on a broker, where one service owns everything in it.
+# A host running several components needs 0755: the truststore is a public CA
+# certificate that every one of them has to read, and a directory only one
+# group can traverse makes it unreadable to the rest regardless of the file's
+# own mode. The private key inside stays 0640 either way.
+tls_dir_mode: "0750"
+
 # Handlers to notify when the certificate changes. Empty by default: the role
 # has no idea which service a given host runs, and notifying a handler that
 # does not exist in the play is an error. Plays that combine this role with a

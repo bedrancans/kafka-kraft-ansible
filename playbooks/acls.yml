@@ -1,0 +1,31 @@
+---
+# Grants the declared permissions.
+#
+# The ordering here is not obvious and getting it wrong locks the cluster out
+# of itself. kafka-acls.sh refuses to work at all without an authorizer —
+# "SecurityDisabledException: No Authorizer is configured on the broker" — so
+# the rules cannot be created first. But switching the authorizer on with an
+# empty rule set and allow.everyone.if.no.acl.found=false denies everything
+# that is not a super user, which is every component.
+#
+# So it goes in three steps:
+#
+#   1. authorizer on, allow.everyone.if.no.acl.found=true
+#      ansible-playbook ... site.yml --tags kafka -e kafka_serial=1 \
+#        -e kafka_authorizer_enabled=true -e kafka_allow_everyone_if_no_acl_found=true
+#
+#   2. create the rules
+#      ansible-playbook ... playbooks/acls.yml
+#
+#   3. start enforcing
+#      ansible-playbook ... site.yml --tags kafka -e kafka_serial=1 \
+#        -e kafka_authorizer_enabled=true
+#
+# Nothing is denied at any point in that sequence.
+- name: Grant the declared ACLs
+  hosts: kafka_brokers[0]
+  become: true
+  gather_facts: false
+  tags: [acls]
+  roles:
+    - role: kafka_acls

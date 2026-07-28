@@ -5,7 +5,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-topics.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_topics_cli_port }}
+      {{ kafka_topics_cli_args }}
       --list
   register: kafka_topics_existing
   changed_when: false
@@ -17,7 +18,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-topics.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_topics_cli_port }}
+      {{ kafka_topics_cli_args }}
       --create --topic {{ item.name }}
       --partitions {{ item.partitions }}
       --replication-factor {{ item.replication_factor }}
@@ -34,7 +36,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-topics.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_topics_cli_port }}
+      {{ kafka_topics_cli_args }}
       --describe --topic {{ item.name }}
   loop: "{{ kafka_topics_effective }}"
   loop_control:
@@ -73,7 +76,8 @@
   ansible.builtin.command:
     cmd: >-
       {{ kafka_install_dir }}/bin/kafka-configs.sh
-      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_internal_port }}
+      --bootstrap-server {{ kafka_internal_host }}:{{ kafka_topics_cli_port }}
+      {{ kafka_topics_cli_args }}
       --entity-type topics --entity-name {{ item.0.name }}
       --alter --add-config {{ item.1.key }}={{ item.1.value }}
   loop: "{{ kafka_topics_effective | subelements('config', skip_missing=True) }}"

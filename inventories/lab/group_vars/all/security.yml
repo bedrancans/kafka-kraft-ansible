@@ -18,7 +18,12 @@
 #   add-secure   secure listeners exist; nothing uses them yet
 #   switch       inter-broker traffic and clients move to the secure listener
 #   secure       the plaintext listeners are gone
-kafka_listener_profile: plaintext
+kafka_listener_profile: secure
+
+# The authentication mechanism, cluster-wide: the brokers offer it, every
+# component uses it, and the ACL tooling authenticates with it. Four roles
+# need to agree, so it is not any one role's private setting.
+kafka_sasl_mechanism: SCRAM-SHA-512
 
 # The secure internal listener gets its own port so it can coexist with the
 # plaintext one during the migration.
@@ -47,10 +52,16 @@ kafka_listener_profiles:
   # ports and adding one means recreating the container, which would destroy
   # the cluster this migration exists to survive. It can only take the port
   # over once the plaintext listener has released it, which is this stage.
+  # The controller listener is SSL here, and it has to be. With the authorizer
+  # on, quorum traffic over a PLAINTEXT listener authenticates as
+  # User:ANONYMOUS, which is not a super user, so the raft fetch is denied and
+  # the broker terminates itself with ClusterAuthorizationException. Mutual
+  # TLS gives each broker the principal its certificate carries — kafka-1,
+  # kafka-2, kafka-3 — which are super users.
   secure:
     - {name: INTERNAL_SSL, port: 9094, protocol: SASL_SSL, advertise: internal, roles: [broker]}
     - {name: EXTERNAL_SSL, port: 39092, protocol: SASL_SSL, advertise: external, roles: [broker]}
-    - {name: CONTROLLER, port: 9093, protocol: PLAINTEXT, advertise: none, roles: [controller]}
+    - {name: CONTROLLER, port: 9093, protocol: SSL, advertise: none, roles: [controller]}
 
 kafka_listeners: "{{ kafka_listener_profiles[kafka_listener_profile] }}"
 
@@ -73,11 +84,13 @@ kafka_client_port: >-
 # Whether clients need credentials at all.
 kafka_client_security_enabled: "{{ kafka_listener_profile in ['switch', 'secure'] }}"
 
-# The controller listener stays PLAINTEXT, and that is a decision rather than
-# an oversight. controller.quorum.voters pins the quorum to one endpoint per
-# node, so a second controller listener cannot be added alongside the first —
-# the trick that makes the client migration seamless is simply not available
-# here. Changing it means a coordinated restart of all three controllers,
-# which is the one thing the operational playbooks refuse to do. The listener
-# is never published outside the cluster network.
-# See docs/adr/0004-controller-listener-stays-plaintext.md.
+# The controller listener is the one part of this migration that cannot be
+# done without a coordinated restart. controller.quorum.voters pins the quorum
+# to a single endpoint per node, so a second controller listener cannot be
+# added alongside the first — the add-then-switch trick that makes the client
+# migration seamless is not available. Every controller has to change protocol
+# together.
+#
+# It also cannot stay PLAINTEXT once the authorizer is on: quorum traffic
+# would authenticate as User:ANONYMOUS and be denied.
+# See docs/adr/0004-controller-listener-tls.md.

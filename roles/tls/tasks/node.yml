@@ -49,7 +49,7 @@
     state: directory
     owner: "{{ tls_owner }}"
     group: "{{ tls_group }}"
-    mode: "0750"
+    mode: "{{ tls_dir_mode }}"
 
 # Certificate first, then key: that is the order Kafka's PEM keystore reads.
 - name: Assemble and install the keystore

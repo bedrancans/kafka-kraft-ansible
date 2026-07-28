@@ -34,6 +34,11 @@
   #   -e kafka_serial=1
   # or through playbooks/rolling-restart.yml.
   serial: "{{ kafka_serial | default('100%') }}"
+  # Handlers are dropped when a play fails, which leaves a node whose config
+  # file is correct and whose running process is not — and the next run sees
+  # no change, so it never restarts it either. Forcing them means a failed
+  # verification still applies the config change it was verifying.
+  force_handlers: true
   roles:
     - role: kafka
 

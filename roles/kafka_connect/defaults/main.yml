@@ -66,3 +66,16 @@ kafka_connect_service_nofile_limit: 16384
 
 # How long verify.yml waits for the REST API to answer.
 kafka_connect_verify_timeout_sec: 120
+
+# ===========================================================================
+# Cluster credentials
+# ===========================================================================
+# Follows kafka_client_security_enabled from group_vars, so this component is
+# reconfigured by the same profile switch that moves the brokers. Clients need
+# only the truststore: mutual TLS is used between brokers and the controller
+# quorum, not for client connections.
+kafka_connect_security_enabled: "{{ kafka_client_security_enabled | default(false) }}"
+kafka_connect_sasl_mechanism: "{{ kafka_sasl_mechanism | default('SCRAM-SHA-512') }}"
+kafka_connect_sasl_username: kafka-connect
+kafka_connect_sasl_password: "{{ kafka_service_passwords[kafka_connect_sasl_username] | default('') }}"
+kafka_connect_truststore: /etc/kafka-tls/ca.crt
